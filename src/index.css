@@ -1,0 +1,196 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Be Vietnam Pro", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  /* mặt nền + chữ (xám hơi ngả xanh dương) */
+  --color-canvas: oklch(0.984 0.006 240);
+  --color-ink: oklch(0.25 0.03 250);
+  --color-ink-2: oklch(0.44 0.025 250);
+  --color-ink-3: oklch(0.55 0.02 250);
+  --color-line: oklch(0.905 0.012 245);
+  --color-line-2: oklch(0.94 0.008 245);
+  --color-wash: oklch(0.965 0.008 245);
+
+  /* tiền / vàng */
+  --color-gold: oklch(0.79 0.15 82);
+  --color-gold-deep: oklch(0.7 0.15 70);
+  --color-gold-ink: oklch(0.5 0.11 70);
+  --color-gold-soft: oklch(0.965 0.045 90);
+  --color-gem: oklch(0.62 0.13 200);
+  --color-gem-ink: oklch(0.47 0.1 205);
+  --color-gem-soft: oklch(0.96 0.03 200);
+
+  /* trạng thái: lỗi / cần xem / ổn / đang cày / full 100 trận / tắt */
+  --color-err: oklch(0.58 0.21 27);
+  --color-err-ink: oklch(0.5 0.19 27);
+  --color-err-soft: oklch(0.955 0.03 25);
+  --color-warn: oklch(0.7 0.17 55);
+  --color-warn-ink: oklch(0.52 0.14 50);
+  --color-warn-soft: oklch(0.965 0.04 70);
+  --color-ok: oklch(0.64 0.15 152);
+  --color-ok-ink: oklch(0.46 0.12 152);
+  --color-ok-soft: oklch(0.96 0.04 152);
+  --color-run: oklch(0.57 0.17 258);
+  --color-run-ink: oklch(0.47 0.16 260);
+  --color-run-soft: oklch(0.96 0.025 255);
+  --color-wait: oklch(0.6 0.14 300);
+  --color-wait-ink: oklch(0.48 0.14 300);
+  --color-wait-soft: oklch(0.965 0.025 300);
+  --color-off: oklch(0.72 0.01 250);
+  --color-off-soft: oklch(0.955 0.005 250);
+
+  /* chuỗi biểu đồ */
+  --color-s-ngl: oklch(0.5 0.15 272);
+  --color-s-iml: oklch(0.64 0.11 192);
+  --color-s-vn: oklch(0.79 0.15 82);
+
+  --radius-card: 1.25rem;
+  --shadow-card: 0 1px 2px oklch(0.3 0.04 250 / 0.05), 0 6px 18px -6px oklch(0.3 0.04 250 / 0.1);
+  --shadow-float: 0 2px 6px oklch(0.3 0.04 250 / 0.08), 0 18px 40px -12px oklch(0.3 0.04 250 / 0.25);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* màu khung (menu) đổi được bằng nút demo: map vào tên Tailwind */
+@theme inline {
+  --color-shell: var(--sh-solid);
+  --color-shell-2: var(--sh-solid-2);
+  --color-shell-ink: var(--sh-solid-ink);
+  --color-brand: var(--sh-solid);
+  --color-brand-ink: var(--sh-solid-2);
+  --color-brand-soft: var(--sh-soft);
+}
+
+/* ===== BỘ MÀU MENU ===== */
+:root, [data-shell="sky"] {
+  --sh-bg: linear-gradient(165deg, oklch(0.96 0.03 220) 0%, oklch(0.89 0.065 228) 50%, oklch(0.83 0.095 245) 100%);
+  --sh-glow: radial-gradient(22rem 16rem at 100% 0%, oklch(1 0 0 / 0.55), transparent 70%);
+  --sh-ink: oklch(0.27 0.07 255); --sh-mute: oklch(0.42 0.07 252);
+  --sh-accent: oklch(0.53 0.2 258);
+  --sh-active: oklch(1 0 0 / 0.78); --sh-hover: oklch(1 0 0 / 0.42); --sh-panel: oklch(1 0 0 / 0.45);
+  --sh-solid: oklch(0.56 0.18 255); --sh-solid-2: oklch(0.49 0.18 258); --sh-solid-ink: oklch(0.99 0 0);
+  --sh-soft: oklch(0.94 0.045 240); --sh-text: oklch(0.32 0.1 255);
+  --glow-1: oklch(0.92 0.06 230 / 0.8); --glow-2: oklch(0.95 0.05 200 / 0.6);
+}
+[data-shell="ocean"] {
+  --sh-bg: linear-gradient(165deg, oklch(0.64 0.14 225) 0%, oklch(0.52 0.17 255) 100%);
+  --sh-glow: radial-gradient(22rem 16rem at 0% 0%, oklch(0.8 0.1 210 / 0.5), transparent 70%);
+  --sh-ink: oklch(0.99 0.005 240); --sh-mute: oklch(0.93 0.03 235);
+  --sh-accent: oklch(0.93 0.13 95);
+  --sh-active: oklch(1 0 0 / 0.2); --sh-hover: oklch(1 0 0 / 0.12); --sh-panel: oklch(1 0 0 / 0.12);
+  --sh-solid: oklch(0.53 0.17 252); --sh-solid-2: oklch(0.46 0.17 255); --sh-solid-ink: oklch(0.99 0 0);
+  --sh-soft: oklch(0.94 0.045 235); --sh-text: oklch(0.42 0.15 252);
+  --glow-1: oklch(0.9 0.07 225 / 0.8); --glow-2: oklch(0.94 0.05 195 / 0.6);
+}
+[data-shell="aurora"] {
+  --sh-bg: linear-gradient(165deg, oklch(0.94 0.045 215) 0%, oklch(0.88 0.07 260) 55%, oklch(0.86 0.08 300) 100%);
+  --sh-glow: radial-gradient(22rem 16rem at 100% 0%, oklch(1 0 0 / 0.5), transparent 70%);
+  --sh-ink: oklch(0.28 0.08 275); --sh-mute: oklch(0.43 0.08 275);
+  --sh-accent: oklch(0.52 0.2 280);
+  --sh-active: oklch(1 0 0 / 0.75); --sh-hover: oklch(1 0 0 / 0.4); --sh-panel: oklch(1 0 0 / 0.45);
+  --sh-solid: oklch(0.52 0.18 275); --sh-solid-2: oklch(0.46 0.18 278); --sh-solid-ink: oklch(0.99 0 0);
+  --sh-soft: oklch(0.94 0.04 275); --sh-text: oklch(0.36 0.12 275);
+  --glow-1: oklch(0.92 0.06 240 / 0.8); --glow-2: oklch(0.94 0.05 300 / 0.55);
+}
+[data-shell="mint"] {
+  --sh-bg: linear-gradient(165deg, oklch(0.97 0.03 175) 0%, oklch(0.9 0.07 178) 55%, oklch(0.85 0.09 195) 100%);
+  --sh-glow: radial-gradient(22rem 16rem at 100% 0%, oklch(1 0 0 / 0.5), transparent 70%);
+  --sh-ink: oklch(0.28 0.06 200); --sh-mute: oklch(0.42 0.06 195);
+  --sh-accent: oklch(0.52 0.11 185);
+  --sh-active: oklch(1 0 0 / 0.75); --sh-hover: oklch(1 0 0 / 0.4); --sh-panel: oklch(1 0 0 / 0.45);
+  --sh-solid: oklch(0.5 0.1 190); --sh-solid-2: oklch(0.44 0.1 192); --sh-solid-ink: oklch(0.99 0 0);
+  --sh-soft: oklch(0.94 0.04 180); --sh-text: oklch(0.36 0.08 192);
+  --glow-1: oklch(0.93 0.06 175 / 0.75); --glow-2: oklch(0.95 0.05 210 / 0.55);
+}
+[data-shell="pitch"] {
+  --sh-bg: linear-gradient(165deg, oklch(0.32 0.06 168) 0%, oklch(0.27 0.055 168) 100%);
+  --sh-glow: radial-gradient(28rem 18rem at 0% 0%, oklch(0.42 0.08 165 / 0.7), transparent 70%), radial-gradient(22rem 16rem at 100% 100%, oklch(0.6 0.12 82 / 0.28), transparent 70%);
+  --sh-ink: oklch(0.97 0.015 160); --sh-mute: oklch(0.8 0.04 165);
+  --sh-accent: oklch(0.79 0.15 82);
+  --sh-active: oklch(1 0 0 / 0.12); --sh-hover: oklch(1 0 0 / 0.06); --sh-panel: oklch(1 0 0 / 0.06);
+  --sh-solid: oklch(0.285 0.058 168); --sh-solid-2: oklch(0.34 0.065 168); --sh-solid-ink: oklch(0.97 0.015 160);
+  --sh-soft: oklch(0.95 0.035 160); --sh-text: oklch(0.3 0.06 168);
+  --glow-1: oklch(0.93 0.06 165 / 0.75); --glow-2: oklch(0.95 0.06 90 / 0.6);
+}
+
+:root { color-scheme: light; }
+
+/* ===== KHUNG SẢN LƯỢNG: chốt bộ Xanh xám (04/11 23:52) ===== */
+:root {
+  --acc-panel: linear-gradient(135deg, #16333A 0%, #141316 100%);
+  --acc-panel-line: #556185; --acc-panel-sub: #8B9BC4; --acc-panel-ink: #F2F2F4;
+}
+/* ===== HÀNG NGÀY THUÊ: chốt tạm kiểu Google Sheet (04/11 23:55) ===== */
+:root {
+  --day-bg: #E8EAED; --day-line: #DADCE0; --day-ink: #202124; --day-money: #8A5A00; --day-shadow: none;
+}
+
+html { -webkit-text-size-adjust: 100%; overflow-x: clip; }
+body { overflow-x: clip; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 40; background: var(--color-canvas); }
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--color-ink);
+  background-color: var(--color-canvas);
+  background-image:
+    radial-gradient(60rem 36rem at 8% -6%, var(--glow-1), transparent 60%),
+    radial-gradient(48rem 30rem at 102% 12%, oklch(0.96 0.05 90 / 0.55), transparent 62%),
+    radial-gradient(50rem 40rem at 60% 110%, var(--glow-2), transparent 60%);
+  background-attachment: fixed;
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+.tnum { font-variant-numeric: tabular-nums; }
+
+/* bề mặt trình duyệt cũng theo màu */
+::selection { background: var(--sh-soft); color: var(--color-ink); }
+:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 2px; border-radius: 8px; }
+input, textarea { caret-color: var(--color-brand); }
+* { scrollbar-width: thin; scrollbar-color: oklch(0.82 0.02 165) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: oklch(0.85 0.02 165); border-radius: 99px; border: 3px solid transparent; background-clip: padding-box; }
+h1, h2, h3 { text-wrap: balance; }
+p { text-wrap: pretty; }
+
+/* kính mờ: chỉ cho lớp nổi */
+.glass {
+  background: oklch(1 0 0 / 0.66);
+  -webkit-backdrop-filter: saturate(170%) blur(18px);
+  backdrop-filter: saturate(170%) blur(18px);
+}
+
+/* hào quang trạng thái (signature) */
+.aura { position: relative; isolation: isolate; }
+.aura::before {
+  content: ""; position: absolute; inset: -18% -6% -10% -6%; z-index: -1; border-radius: 3rem;
+  background:
+    radial-gradient(40% 70% at 12% 30%, var(--aura-1), transparent 70%),
+    radial-gradient(38% 60% at 88% 20%, var(--aura-2), transparent 70%);
+  filter: blur(26px); opacity: 0.9;
+  animation: aura-breathe 6s var(--ease-out-expo) infinite alternate;
+}
+.aura[data-sev="err"] { --aura-1: oklch(0.8 0.15 27 / 0.55); --aura-2: oklch(0.86 0.13 55 / 0.5); }
+.aura[data-sev="warn"] { --aura-1: oklch(0.86 0.13 60 / 0.55); --aura-2: oklch(0.9 0.11 85 / 0.45); }
+.aura[data-sev="ok"] { --aura-1: oklch(0.86 0.12 155 / 0.55); --aura-2: oklch(0.9 0.09 190 / 0.45); }
+@keyframes aura-breathe { from { opacity: 0.7; transform: scale(0.98); } to { opacity: 1; transform: scale(1.02); } }
+
+/* vào trang */
+.page-in { animation: page-in 380ms var(--ease-out-expo) both; }
+@keyframes page-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.ring-arc { transition: stroke-dashoffset 1100ms var(--ease-out-expo); }
+.bar-fill { transition: width 1000ms var(--ease-out-expo); }
+.pulse-dot { animation: pulse 1.8s ease-out infinite; }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 oklch(0.58 0.21 27 / 0.45); } 100% { box-shadow: 0 0 0 9px oklch(0.58 0.21 27 / 0); } }
+
+.pop-in { animation: pop-in 180ms var(--ease-out-expo); transform-origin: var(--radix-popover-content-transform-origin); }
+@keyframes pop-in { from { opacity: 0; transform: scale(0.96) translateY(-4px); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .aura::before, .pulse-dot { animation: none; }
+  .page-in, .pop-in { animation: none; }
+  .ring-arc, .bar-fill { transition: none; }
+}
+
+.recharts-surface:focus, .recharts-wrapper:focus, .recharts-sector:focus { outline: none; }
