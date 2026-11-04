@@ -14,6 +14,6 @@ export const firebaseConfig = {
 // Chỉ các tài khoản này được vào trang. UID lấy ở màn hình sau khi đăng nhập lần đầu (có nút chép).
 // Đây chỉ là "cửa trước" cho đẹp; khóa THẬT là Luật Firebase cho nhánh /web (chỉ UID này đọc/ghi).
 export const ALLOWED = {
-  uids: [],
+  uids: ["K5iiwtENTfZou9vMuvfSRMUDTPZ2", "lTVVRCo2wOWrpUQwuiwW84wcy8v1"],
   emails: ["mobilegamemoba9@gmail.com", "dlschanh@gmail.com"],
 };
