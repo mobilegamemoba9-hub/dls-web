@@ -163,7 +163,9 @@ export function Segmented({ items, value, onChange, className, label }) {
   );
 }
 
-export function SampleTag({ className }) {
+export function SampleTag({ className, live, small }) {
+  if (small) return <span className={cn("inline-flex items-center rounded-full bg-gold-soft px-2 py-0.5 text-[11px] font-semibold text-gold-ink", className)}>mẫu</span>;
+  if (live) return <span className={cn("inline-flex items-center gap-1.5 rounded-full bg-ok-soft px-2.5 py-1 text-[12px] font-semibold text-ok-ink", className)}><span className="size-1.5 rounded-full bg-ok" />Máy: số thật</span>;
   return <span className={cn("inline-flex items-center gap-1.5 rounded-full bg-gold-soft px-2.5 py-1 text-[12px] font-semibold text-gold-ink", className)}><span className="size-1.5 rounded-full bg-gold-deep" />Dữ liệu mẫu</span>;
 }
 

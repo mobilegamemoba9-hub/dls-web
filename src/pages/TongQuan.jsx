@@ -1,17 +1,26 @@
 import { ArrowRight, Cpu, Radio, Bot, Inbox, Power, TrendingDown } from "lucide-react";
-import { Card, CardHead, Badge, Dot, CountUp, GoldBar, Gold, CopyBtn, Button, cn, TONE } from "../ui.jsx";
-import { machines, alerts, soon, slow } from "../data.js";
+import { Card, CardHead, Badge, Dot, CountUp, GoldBar, Gold, CopyBtn, Button, SampleTag, HudPill, cn, TONE } from "../ui.jsx";
+import { machines as mMau, alerts, soon as soonMau, slow as slowMau } from "../data.js";
+import { issuesOf, soonOf, slowOf, newToday, ngayText } from "../live.js";
 
-export default function TongQuan({ upd }) {
-  const issues = alerts.filter((a) => a.day === "Hôm nay" && a.sev !== "info");
+export default function TongQuan({ upd, live }) {
+  const real = !!live;
+  const machines = real ? live.real : mMau;
+  const none = real ? live.machines.filter((m) => m.s === "none") : [];
+  const issues = real ? issuesOf(live) : alerts.filter((a) => a.day === "Hôm nay" && a.sev !== "info");
+  const mauTD = real ? alerts.filter((a) => a.day === "Hôm nay" && a.sev !== "info" && a.src === "Tổng đài") : [];
+  const soon = real ? soonOf(live) : soonMau;
+  const slow = real ? slowOf(live) : slowMau;
   const nErr = issues.filter((a) => a.sev === "err").length;
   const nWarn = issues.length - nErr;
-  const sev = nErr ? "err" : nWarn ? "warn" : "ok";
+  const sev = real && !machines.length ? "warn" : nErr ? "err" : nWarn ? "warn" : "ok";
   const okM = machines.filter((m) => m.s === "ok");
-  const live = machines.filter((m) => m.s !== "err").length;
+  const song = machines.filter((m) => m.s !== "err").length;
   const cay = machines.reduce((a, m) => a + m.cay + m.cho, 0);
   const cho = machines.reduce((a, m) => a + m.cho, 0);
   const san = machines.reduce((a, m) => a + m.san, 0);
+  const g7 = machines.reduce((a, m) => a + (m.g7 || 0), 0);
+  const k7 = machines.reduce((a, m) => a + (m.k7 || 0), 0);
 
   return (
     <div className="space-y-6 lg:space-y-8">
@@ -23,12 +32,12 @@ export default function TongQuan({ upd }) {
               sev === "err" ? "border-err/40 bg-err-soft" : sev === "warn" ? "border-warn/45 bg-warn-soft" : "border-ok/40 bg-ok-soft")}>
               <Dot tone={sev} pulse={sev === "err"} className="size-3.5" />
               <h1 id="tq-h" className="text-[20px] leading-[1.2] font-extrabold tracking-[0.005em] uppercase sm:text-[27px]">
-                {sev === "ok" ? <span className="text-ok-ink">Mọi máy đang chạy ổn</span> : (
+                {real && !machines.length ? <span className="text-warn-ink">Chưa máy nào gửi dữ liệu</span> : sev === "ok" ? <span className="text-ok-ink">{real && none.length ? `${machines.length} máy đang chạy ổn` : "Mọi máy đang chạy ổn"}</span> : (
                   <>{nErr > 0 && <span className="block whitespace-nowrap text-err-ink sm:inline">{nErr} máy mất tín hiệu</span>}{nErr > 0 && nWarn > 0 && <span className="mx-3 hidden text-ink-3/60 sm:inline">·</span>}{nWarn > 0 && <span className="block whitespace-nowrap text-warn-ink sm:inline">{nWarn} việc cần xem</span>}</>
                 )}
               </h1>
             </div>
-            <p className="mt-3 text-[13.5px] text-ink-2">Tối thứ Tư 4/11 · cập nhật lúc <span className="tnum">{upd}</span></p>
+            <p className="mt-3 text-[13.5px] text-ink-2">{real ? ngayText() : "Tối thứ Tư 4/11"} · cập nhật lúc <span className="tnum">{upd}</span>{real && none.length > 0 && <> · <span className="text-ink-3">{none.length} máy chưa gửi dữ liệu</span></>}</p>
           </div>
 
           {/* danh sách việc cần xử lý */}
@@ -50,15 +59,30 @@ export default function TongQuan({ upd }) {
                 </a>
               </li>
             ))}
+            {mauTD.map((a) => (
+              <li key={"mau" + a.id}>
+                <a href="#canh-bao" className="group flex items-start gap-3 rounded-2xl px-3 py-3.5 opacity-75 transition-colors hover:bg-white/70 sm:px-4">
+                  <Dot tone="off" className="mt-[7px]" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
+                      <span className="text-[15.5px] font-semibold text-ink-2">{a.t}</span>
+                      <SampleTag small />
+                      <span className="text-[12.5px] text-ink-3">{a.src} · chưa nối Tổng đài</span>
+                    </div>
+                    <p className="mt-0.5 text-[14px] text-ink-3">{a.p}</p>
+                  </div>
+                </a>
+              </li>
+            ))}
           </ul>
 
           {/* 4 số chính */}
           <dl className="mt-2 grid grid-cols-2 border-t border-ink/8 sm:grid-cols-4">
             {[
-              { l: "máy có tín hiệu", v: <span><CountUp to={live} />/{machines.length}</span>, tone: live < machines.length ? "err" : "ok" },
+              { l: "máy có tín hiệu", v: <span><CountUp to={song} />/{machines.length}</span>, tone: song < machines.length || (real && !machines.length) ? "err" : "ok" },
               { l: <>tab đang cày · <span className="tnum">{cho}</span> full 100 trận</>, v: <CountUp to={cay} />, tone: "run" },
               { l: "tab sẵn sàng nhận đơn", v: <CountUp to={san} />, tone: "ok" },
-              { l: "đơn mới hôm nay", v: <CountUp to={9} />, tone: "gold" },
+              real ? { l: "gói mới hôm nay", v: <CountUp to={newToday(live)} />, tone: "gold" } : { l: "đơn mới hôm nay", v: <CountUp to={9} />, tone: "gold" },
             ].map((s, i) => (
               <div key={i} className={cn("px-5 py-4 sm:px-7", i % 2 === 1 && "border-l border-ink/8", i >= 2 && "border-t border-ink/8 sm:border-t-0", i === 2 && "sm:border-l")}>
                 <dt className="sr-only">{typeof s.l === "string" ? s.l : "tab đang cày"}</dt>
@@ -67,6 +91,13 @@ export default function TongQuan({ upd }) {
               </div>
             ))}
           </dl>
+          {real && machines.length > 0 && (
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-ink/8 px-5 py-3.5 sm:px-7">
+              <span className="text-[13px] text-ink-2">Cày được từ 7h sáng (các máy đã gửi)</span>
+              <HudPill kind="gem" n={k7} />
+              <HudPill kind="coin" n={g7} />
+            </div>
+          )}
         </section>
       </div>
 
@@ -78,12 +109,21 @@ export default function TongQuan({ upd }) {
             <div className="grid grid-cols-2 gap-2 px-4 pb-4 sm:grid-cols-3">
               {okM.map((m) => (
                 <a key={m.code} href={`#may/${m.code}`} className="group rounded-2xl border border-line-2 bg-wash/60 px-3.5 py-3 transition-[background-color,border-color,transform] hover:-translate-y-px hover:border-line hover:bg-white">
-                  <div className="flex items-center gap-2"><Dot tone="ok" className="size-2" /><span className="font-semibold">{m.code}</span><span className="ml-auto text-[12px] text-ink-3 tnum">{m.hb}</span></div>
+                  <div className="flex items-center gap-2"><Dot tone="ok" className="size-2" /><span className="font-semibold">{m.code}</span><span className="ml-auto text-[12px] text-ink-3 tnum">{m.hb}{real && " trước"}</span></div>
                   <div className="mt-1.5 text-[13px] text-ink-2 tnum"><span className="text-run-ink font-medium">{m.cay}</span> cày · <span className="text-ok-ink font-medium">{m.san}</span> sẵn sàng</div>
                   {m.cpu > 85 && <div className="mt-1 flex items-center gap-1 text-[12.5px] text-warn-ink"><Cpu className="size-3.5" />CPU {m.cpu}%</div>}
                 </a>
               ))}
+              {real && !okM.length && <p className="col-span-full px-1 py-2 text-[13.5px] text-ink-3">Chưa có máy nào ở trạng thái ổn.</p>}
             </div>
+            {none.length > 0 && (
+              <div className="border-t border-line-2 px-5 py-3.5">
+                <div className="text-[12.5px] text-ink-3">Chưa gửi dữ liệu (chưa cài gói WEB TÓM TẮT)</div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {none.map((m) => <a key={m.code} href={`#may/${m.code}`} className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-dashed border-line bg-white/50 px-2.5 text-[13px] font-semibold text-ink-3 tnum hover:bg-white"><Dot tone="off" className="size-1.5" />{m.code}</a>)}
+                </div>
+              </div>
+            )}
           </Card>
 
           <div className="grid gap-6 md:grid-cols-2">
@@ -91,6 +131,7 @@ export default function TongQuan({ upd }) {
             <Card>
               <CardHead title="Đơn sắp xong" sub="Hôm nay và ngày mai" right={<Badge tone="gold" className="tnum">{soon.length} đơn</Badge>} />
               <ul className="px-2 pb-3">
+                {!soon.length && <li className="px-3 py-2 text-[13.5px] text-ink-3">Chưa có đơn nào xong trong hôm nay hoặc ngày mai.</li>}
                 {soon.map((s) => (
                   <li key={s.n} className="flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-wash/70">
                     <div className="min-w-0 flex-1">
@@ -111,6 +152,7 @@ export default function TongQuan({ upd }) {
             <Card>
               <CardHead title="Tab cày chậm bất thường" sub="Sản lượng hôm nay so với các tab cùng máy" right={<Badge tone="warn" className="tnum">{slow.length} tab</Badge>} />
               <ul className="space-y-1 px-2 pb-3">
+                {!slow.length && <li className="px-3 py-2 text-[13.5px] text-ink-3">{real ? "Không có tab nào chậm bất thường." : ""}</li>}
                 {slow.map((s) => (
                   <li key={s.w} className="rounded-xl px-3 py-2.5">
                     <div className="flex items-center gap-2">
@@ -130,7 +172,7 @@ export default function TongQuan({ upd }) {
         <div className="space-y-6">
           {/* số thứ tự đơn */}
           <Card>
-            <CardHead title="Số thứ tự đơn" />
+            <CardHead title="Số thứ tự đơn" right={real ? <SampleTag small /> : null} />
             <div className="grid grid-cols-2 gap-px overflow-hidden border-y border-line-2 bg-line-2">
               <div className="bg-white px-5 py-3.5"><div className="text-[12.5px] text-ink-3">NGL kế tiếp</div><div className="mt-0.5 text-[22px] font-bold tracking-[-0.01em] tnum">NGL235</div></div>
               <div className="bg-white px-5 py-3.5"><div className="text-[12.5px] text-ink-3">IML hôm nay</div><div className="mt-0.5 text-[22px] font-bold tracking-[-0.01em] tnum">IML5</div></div>
@@ -143,7 +185,7 @@ export default function TongQuan({ upd }) {
 
           {/* máy nhà */}
           <Card>
-            <CardHead title="Máy nhà" />
+            <CardHead title="Máy nhà" right={real ? <SampleTag small /> : null} />
             <ul className="divide-y divide-line-2 border-t border-line-2">
               {[
                 { I: Radio, l: "Tổng đài", v: "Đang nhận code", tone: "ok" },

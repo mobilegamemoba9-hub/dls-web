@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useRef, useState } from "react";
+import { StrictMode, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { LayoutGrid, Server, ListChecks, BarChart3, BellRing, RefreshCw, Palette, LogOut } from "lucide-react";
 import * as Popover from "@radix-ui/react-popover";
@@ -12,6 +12,7 @@ import DoanhThu from "./pages/DoanhThu.jsx";
 import CanhBao from "./pages/CanhBao.jsx";
 import { Gate, UidRow, logout } from "./auth.jsx";
 import { readWeb, configured } from "./firebase.js";
+import { buildLive, issuesOf } from "./live.js";
 
 const NAV = [
   { k: "tong-quan", l: "Tổng quan", I: LayoutGrid },
@@ -32,28 +33,28 @@ function useHash() {
 
 const LAM_MOI_MS = 120000;
 
-/* Trạng thái nhánh /web trên Firebase (chỉ đọc). Trang vẫn hiện dữ liệu mẫu cho tới lát 2. */
+/* Đọc nhánh /web/may trên Firebase (chỉ đọc, 1 lần mỗi lượt làm mới). Lỗi đọc -> giữ bản đọc được gần nhất. */
 function useWeb(user, tick) {
-  const [st, setSt] = useState({ k: configured ? "dang" : "chua_noi" });
+  const [st, setSt] = useState({ k: configured ? "dang" : "chua_noi", raw: null });
   useEffect(() => {
     if (!user) return;
     let huy = false;
     readWeb("may").then(
-      (v) => { if (!huy) setSt(v ? { k: "co", n: Object.keys(v).length } : { k: "trong" }); },
-      (e) => { if (!huy) setSt({ k: String(e && (e.code || e.message)).toLowerCase().includes("permission") ? "cam" : "loi" }); }
+      (v) => { if (!huy) setSt({ k: v ? "co" : "trong", n: v ? Object.keys(v).length : 0, raw: v || {}, at: Date.now() }); },
+      (e) => { if (!huy) setSt((o) => ({ ...o, k: String(e && (e.code || e.message)).toLowerCase().includes("permission") ? "cam" : "loi" })); }
     );
     return () => { huy = true; };
   }, [user, tick]);
   return st;
 }
 const WEB_TEXT = {
-  chua_noi: "Chưa nối Firebase",
+  chua_noi: "Chưa nối Firebase · đang xem dữ liệu mẫu",
   dang: "Đang đọc Firebase…",
-  cam: "Firebase: chưa mở quyền đọc nhánh /web (đổi luật ở lát 2)",
+  cam: "Firebase: chưa có quyền đọc nhánh /web (kiểm luật Rules)",
   trong: "Firebase: nối được, chưa có máy nào gửi dữ liệu",
   loi: "Firebase: lỗi đọc, thử Làm mới",
 };
-const webText = (w) => (w.k === "co" ? `Firebase: ${w.n} máy đã gửi dữ liệu (hiện lên trang từ lát 2)` : WEB_TEXT[w.k]);
+const webText = (w) => (w.k === "co" ? `Firebase: ${w.n} máy gửi dữ liệu thật · Đơn, Doanh thu, Cảnh báo vẫn là dữ liệu mẫu` : WEB_TEXT[w.k]) + (w.raw && (w.k === "cam" || w.k === "loi") ? " · đang hiện lần đọc được gần nhất" : "");
 
 function App({ user }) {
   const { v, arg } = useHash();
@@ -69,6 +70,8 @@ function App({ user }) {
   const last = useRef(0);
   const refresh = () => { last.current = Date.now(); setUpd(hm(new Date())); setTick((t) => t + 1); };
   const web = useWeb(user, tick);
+  const live = useMemo(() => (web.raw ? buildLive(web.raw) : null), [web.raw, tick]);
+  const badge = live ? issuesOf(live).length : openAlerts;
   useEffect(() => {                                           // tự làm mới mỗi 2 phút, CHỈ khi trang đang hiện
     last.current = Date.now(); setUpd(hm(new Date()));
     const id = setInterval(() => { if (document.visibilityState === "visible") refresh(); }, LAM_MOI_MS);
@@ -78,8 +81,8 @@ function App({ user }) {
   }, []);
 
   const page = {
-    "tong-quan": <TongQuan upd={upd} />,
-    may: <May code={arg} />,
+    "tong-quan": <TongQuan upd={upd} live={live} />,
+    may: <May code={arg} live={live} />,
     don: <Don orders={orders} setOrders={setOrders} prices={prices} />,
     "doanh-thu": <DoanhThu rate={rate} setRate={setRate} prices={prices} setPrices={setPrices} />,
     "canh-bao": <CanhBao />,
@@ -99,7 +102,7 @@ function App({ user }) {
                   v === k ? "bg-[var(--sh-active)] font-semibold text-[var(--sh-ink)] shadow-[0_1px_3px_oklch(0.3_0.05_250/0.12)]" : "text-[var(--sh-mute)] hover:bg-[var(--sh-hover)] hover:text-[var(--sh-ink)]")}>
                 <I className={cn("size-[18px]", v === k && "text-[var(--sh-accent)]")} strokeWidth={1.9} />
                 <span className="flex-1">{l}</span>
-                {k === "canh-bao" && <span className="tnum grid h-5 min-w-5 place-items-center rounded-full bg-err px-1.5 text-[11.5px] font-semibold text-white">{openAlerts}</span>}
+                {k === "canh-bao" && badge > 0 && <span className="tnum grid h-5 min-w-5 place-items-center rounded-full bg-err px-1.5 text-[11.5px] font-semibold text-white">{badge}</span>}
               </a>
             ))}
           </nav>
@@ -107,7 +110,7 @@ function App({ user }) {
             <div className="space-y-3 rounded-xl bg-[var(--sh-panel)] px-3 py-2.5">
               <ShellPicker value={shell} onChange={setShell} dark />
             </div>
-            <SampleTag />
+            <SampleTag live={!!live} />
             <div className="flex items-center justify-between gap-2 rounded-xl bg-[var(--sh-panel)] px-3 py-2.5">
               <div className="text-[12.5px] leading-tight">
                 <div className="text-[var(--sh-mute)]">Cập nhật lúc</div>
@@ -131,7 +134,7 @@ function App({ user }) {
         {/* ---- thanh trên (điện thoại) ---- */}
         <header style={{ backgroundImage: "linear-gradient(90deg, color-mix(in oklch, var(--sh-soft) 70%, transparent), transparent)" }} className="glass sticky top-[env(safe-area-inset-top,0px)] z-30 flex items-center gap-2 border-b border-white/60 py-2.5 pr-[max(16px,env(safe-area-inset-right,0px))] pl-[max(16px,env(safe-area-inset-left,0px))] lg:hidden">
           <a href="#tong-quan" className="text-[14px] leading-tight font-extrabold tracking-[-0.01em] text-[var(--sh-text)]">QUẢN LÍ <span className="text-[var(--sh-solid)]">HỆ THỐNG</span></a>
-          <SampleTag className="ml-auto" />
+          <SampleTag live={!!live} className="ml-auto" />
           <Popover.Root>
             <Popover.Trigger className="grid size-9 cursor-pointer place-items-center rounded-xl text-ink-2 hover:bg-white" aria-label="Màu menu và tài khoản"><Palette className="size-4" /></Popover.Trigger>
             <Popover.Portal>
@@ -152,7 +155,7 @@ function App({ user }) {
 
         <main key={v + tick} className="page-in mx-auto w-full max-w-[1280px] pr-[max(16px,env(safe-area-inset-right,0px))] pl-[max(16px,env(safe-area-inset-left,0px))] pt-5 pb-28 sm:px-6 lg:px-8 xl:px-10 lg:pt-9 lg:pb-14">
           {page}
-          <p className="mt-10 text-center text-[12.5px] text-ink-3">Dữ liệu mẫu · {webText(web)}.</p>
+          <p className="mt-10 text-center text-[12.5px] text-ink-3">{webText(web)}.</p>
         </main>
       </div>
 
@@ -164,7 +167,7 @@ function App({ user }) {
             <a key={k} href={`#${k}`} aria-current={on ? "page" : undefined} className={cn("relative flex flex-col items-center gap-0.5 rounded-xl py-1.5 text-[11.5px] font-medium", on ? "text-[var(--sh-text)]" : "text-ink-3")}>
               <span className={cn("grid h-7 w-12 place-items-center rounded-full transition-colors", on && "bg-[var(--sh-soft)]")}><I className="size-[19px]" strokeWidth={on ? 2.2 : 1.9} /></span>
               {l}
-              {k === "canh-bao" && <span className="tnum absolute top-0.5 right-[calc(50%-22px)] grid h-4 min-w-4 place-items-center rounded-full bg-err px-1 text-[10px] font-semibold text-white">{openAlerts}</span>}
+              {k === "canh-bao" && badge > 0 && <span className="tnum absolute top-0.5 right-[calc(50%-22px)] grid h-4 min-w-4 place-items-center rounded-full bg-err px-1 text-[10px] font-semibold text-white">{badge}</span>}
             </a>
           );
         })}
