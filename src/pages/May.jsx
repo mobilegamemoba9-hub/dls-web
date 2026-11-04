@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { Pause, Cpu, HeartPulse, AlertTriangle } from "lucide-react";
 import { Badge, Dot, GoldBar, Gold, Gems, HudPill, Button, Segmented, cn } from "../ui.jsx";
 import { machines as mMau, tabsOf, fmt } from "../data.js";
-import { eta as etaOf, CPU_CAO } from "../live.js";
+import { eta as etaOf, pctOf, CPU_CAO } from "../live.js";
 
 const ST = {
   cay: { l: "Đang cày", tone: "run" },
@@ -123,9 +123,9 @@ export default function May({ code, live }) {
 function TabCard({ t, real }) {
   const has = real ? t.pkg && HAS.includes(t.k) : t.k !== "san" && t.k !== "off";
   const st = ST[t.k] || ST.off;
-  const pct = has && t.tg ? Math.min(100, (t.g / t.tg) * 100) : 0;
+  const pct = !has ? 0 : real ? pctOf(t) : Math.min(100, (t.g / t.tg) * 100);
   let eta = "";
-  if (has && real) eta = etaOf(t).txt;
+  if (has && real) eta = t.k === "warn" ? "Bot đã dừng" : etaOf(t).txt;
   else if (has) {
     const left = Math.max(0, t.tg - t.g), ml = t.gpm ? Math.ceil(left / t.gpm) : 0, rem = 100 - t.mt; /* ml = số trận còn cần */
     const dd = Math.ceil((ml - rem) / 100);
@@ -157,7 +157,7 @@ function TabCard({ t, real }) {
       <div className="mt-1.5 truncate text-[14.5px] font-semibold" title={t.name}>{t.name}</div>
 
       <div className="mt-3 flex items-baseline justify-between text-[13px]">
-        <span className="flex items-center gap-1"><Gold n={t.g} className="text-gold-ink" /><span className="text-ink-3">/ {fmt(t.tg)}</span></span>
+        <span className="flex items-center gap-1"><Gold n={t.g} className="text-gold-ink" /><span className="text-ink-3">{real && !t.tg && t.td ? `· gói ${t.td} ngày` : `/ ${fmt(t.tg)}`}</span></span>
         <span className="tnum font-semibold">{Math.round(pct)}%</span>
       </div>
       <GoldBar pct={pct} className="mt-1.5" />

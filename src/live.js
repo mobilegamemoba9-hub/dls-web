@@ -21,25 +21,38 @@ export function tuoi(s) {
 // trạng thái tab của web_tomtat -> khóa trang Máy
 const K = { cay: "cay", cho: "cho", dung: "dung", loi: "warn", xong: "xong", ngung: "ngung", san: "san", tao: "tao", nhan: "nhan", tat: "off" };
 
-function tabOf(x, code) {
-  const k = K[x.s] || "off";
-  const tr = num(x.tr), g = num(x.g), tg = num(x.tg);
+// Mã thoát của bot (web_tomtat cắt lỗi còn 60 ký tự) -> chữ dễ đọc. 90 = ngủ đêm vì đủ 100 trận: KHÔNG phải lỗi.
+const MA = { 92: "Acc bị khóa · bot đã dừng", 96: "Vàng/KC giảm (khách tiêu?) · bot đã dừng" };
+const DAY = 86400000;
+const bdMs = (bd) => { const t = bd ? new Date(bd.replace(" ", "T")).getTime() : NaN; return Number.isFinite(t) ? t : null; };
+
+function tabOf(x, code, nowMs) {
+  let k = K[x.s] || "off", health = x.e || "", nghi = false;
+  const ma = /thoát mã (\d+)/.exec(health);
+  if (x.s === "loi" && ma && ma[1] === "90") { k = "cho"; health = ""; nghi = true; }
+  else if (ma && MA[ma[1]]) health = MA[ma[1]];
+  const tr = num(x.tr), g = num(x.g), tg = num(x.tg), td = num(x.td), bd = x.bd || "";
+  const b = bdMs(bd);
+  const ngay = td > 0 && b != null ? (nowMs - b) / DAY : null;   // gói theo ngày: số ngày đã cày
   return {
-    i: num(x.i), k, code,
+    i: num(x.i), k, code, nghi,
     pkg: !!x.n,
     name: x.n || "",
-    g, tg,
+    g, tg, td, ngay,
     kc: num(x.k7), kt: num(x.k), tk: num(x.tk),
     mt: num(x.t7),                       // trận từ 7h
     today: num(x.g7),                    // vàng từ 7h
     tr,                                  // trận cả gói
     gpm: tr > 0 && g > 0 ? g / tr : 0,   // vàng / trận trung bình của gói -> ước dự kiến xong
-    bd: x.bd || "",
+    bd,
     san: num(x.san),
     kq: x.kq || "",
-    health: x.e || "",
+    health,
   };
 }
+
+// % tiến độ: gói theo vàng -> vàng/mục tiêu; gói theo NGÀY (mục tiêu vàng = 0) -> ngày đã cày / số ngày
+export const pctOf = (t) => (t.tg > 0 ? Math.min(100, (t.g / t.tg) * 100) : t.td > 0 && t.ngay != null ? Math.max(0, Math.min(100, (t.ngay / t.td) * 100)) : 0);
 
 // raw = giá trị /web/may (object m<m> -> node) hoặc null
 export function buildLive(raw, nowMs = Date.now()) {
@@ -54,16 +67,17 @@ export function buildLive(raw, nowMs = Date.now()) {
   const machines = codes.map((m) => {
     const code = "M" + m, v = nodes[m];
     if (!v) return { code, m, s: "none", cay: 0, cho: 0, san: 0, loi: 0, tat: 0, cpu: null, hb: "", why: "Chưa cài gói WEB TÓM TẮT", tabs: [], g7: 0, k7: 0 };
-    const tabs = Object.values(v.tabs || {}).filter((x) => x && typeof x === "object").map((x) => tabOf(x, code)).sort((a, b) => a.i - b.i);
+    const tabs = Object.values(v.tabs || {}).filter((x) => x && typeof x === "object").map((x) => tabOf(x, code, nowMs)).sort((a, b) => a.i - b.i);
     const c = (...ks) => tabs.filter((t) => ks.includes(t.k)).length;
     const age = now - num(v.t);
     const cpu = v.cpu == null ? null : num(v.cpu);
     const loi = tabs.filter((t) => t.k === "warn" || (t.health && t.k !== "off"));
+    const nLoi = tabs.filter((t) => t.k === "warn").length, nDon = loi.length - nLoi;
     let s = "ok", why = "";
     if (age > MAT_TIN_HIEU_S) { s = "err"; why = `Không có cập nhật ${tuoi(age)} (Agent tắt, máy treo hoặc mất mạng)`; }
     else if (loi.length || (cpu != null && cpu >= CPU_CAO)) {
       s = "warn";
-      why = [loi.length ? `${loi.length} tab cần xem` : "", cpu != null && cpu >= CPU_CAO ? `CPU ${cpu}%` : ""].filter(Boolean).join(" · ");
+      why = [nLoi ? `${nLoi} tab lỗi` : "", nDon ? `${nDon} tab xong đơn chưa dọn` : "", cpu != null && cpu >= CPU_CAO ? `CPU ${cpu}%` : ""].filter(Boolean).join(" · ");
     }
     return {
       code, m, s, why, cpu, ram: v.ram == null ? null : num(v.ram),
@@ -77,6 +91,12 @@ export function buildLive(raw, nowMs = Date.now()) {
 
 // dự kiến xong theo TRẬN (game cho 100 trận/ngày, reset 7h)
 export function eta(t) {
+  if (!t.tg && t.td > 0) {                                  // gói theo ngày
+    if (t.ngay == null) return { ml: null, txt: "Chưa rõ ngày bắt đầu", d: null };
+    const con = Math.ceil(t.td - t.ngay);
+    return { ml: null, txt: con <= 0 ? "Đủ số ngày" : con === 1 ? "Ngày mai" : `~${con} ngày`, d: Math.max(0, con) };
+  }
+  if (!t.tg) return { ml: null, txt: "Chưa có mục tiêu", d: null };
   const left = Math.max(0, t.tg - t.g);
   if (t.tg > 0 && left === 0) return { ml: 0, txt: "Đủ mục tiêu", d: 0 };
   if (!t.gpm) return { ml: null, txt: "Chưa đủ số liệu", d: null };
@@ -108,9 +128,9 @@ export function issuesOf(live) {
 export function soonOf(live) {
   const out = [];
   for (const m of live.real) for (const t of m.tabs) {
-    if (!DANG.includes(t.k) || !t.tg) continue;
+    if (!DANG.includes(t.k) || !t.pkg || (!t.tg && !t.td)) continue;
     const e = eta(t);
-    if (e.d === 0 || e.d === 1) out.push({ n: t.name, d: e.d === 0 ? "Hôm nay" : "Ngày mai", p: Math.min(100, Math.round((t.g / t.tg) * 100)), go: m.code });
+    if (e.d === 0 || e.d === 1) out.push({ n: t.name, d: e.d === 0 ? "Hôm nay" : "Ngày mai", p: Math.round(pctOf(t)), go: m.code });
   }
   return out.sort((a, b) => (a.d === b.d ? b.p - a.p : a.d === "Hôm nay" ? -1 : 1)).slice(0, 8);
 }
