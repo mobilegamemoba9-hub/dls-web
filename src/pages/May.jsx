@@ -29,10 +29,6 @@ export default function May({ code, live }) {
   const [f, setF] = useState("all");
   const cnt = (k) => tabs.filter((t) => t.k === k).length;
   const list = tabs.filter((t) => f === "all" || t.k === f);
-  const ORD = { warn: 0, cay: 1, cho: 2, dung: 3 };
-  const isBusy = (t) => t.k in ORD && (!real || t.pkg);
-  const busy = list.filter(isBusy).sort((a, b) => ORD[a.k] - ORD[b.k] || a.i - b.i);
-  const idle = list.filter((t) => !isBusy(t));
 
   return (
     <div className="space-y-6">
@@ -103,15 +99,9 @@ export default function May({ code, live }) {
           { k: "off", l: "Tắt", dot: "off", c: cnt("off") },
         ].filter((it) => it.k === "all" || it.c > 0)} />}
 
-      {busy.length > 0 && (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {busy.map((t) => <TabCard key={t.i} t={t} real={real} />)}
-        </div>
-      )}
-      {idle.length > 0 && (
-        <div>
-          {busy.length > 0 && <h2 className="mb-2 text-[13px] font-semibold text-ink-3">Tab không có gói đang cày</h2>}
-          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{idle.map((t) => <TabCard key={t.i} t={t} real={real} />)}</div>
+      {list.length > 0 && (
+        <div className="grid items-start gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {[...list].sort((x, y) => x.i - y.i).map((t) => <TabCard key={t.i} t={t} real={real} />)}
         </div>
       )}
       {!list.length && m.s !== "none" && <p className="rounded-2xl border border-dashed border-line px-4 py-8 text-center text-[14px] text-ink-3">Máy này không có tab nào ở trạng thái này.</p>}
