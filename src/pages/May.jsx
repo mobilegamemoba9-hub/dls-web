@@ -37,7 +37,12 @@ export default function May({ code, live }) {
   const nut = real && m.nut && (m.s === "ok" || m.s === "warn");   // (lát 5) máy có bản nút + còn gửi dữ liệu
   const L = useLenh(real && m.s !== "none" ? m.m : null, nut);
   const choTab = (i) => L.rows.filter((r) => r.k === "cho" && r.tab === i);
-  const card = (t) => <TabCard key={t.i} t={t} real={real} nut={nut} gui={L.gui} cho={choTab(t.i)} may={m.code} />;
+  // tạm dừng / tiếp tục vừa gửi mà máy chưa gửi tóm tắt mới (≤ 2 phút) -> theo lệnh mới nhất để hiện đúng nút
+  const dungMoi = (i) => {
+    const r = L.rows.find((x) => x.tab === i && (x.l === "tam_dung" || x.l === "chay_tiep") && (x.k === "cho" || x.k === "ok"));
+    return r && r.t > (m.t || 0) * 1000 ? r.l === "tam_dung" : null;
+  };
+  const card = (t) => <TabCard key={t.i} t={t} real={real} nut={nut} gui={L.gui} cho={choTab(t.i)} may={m.code} dm={dungMoi(t.i)} />;
 
   return (
     <div className="space-y-6">
@@ -139,7 +144,7 @@ export default function May({ code, live }) {
   );
 }
 
-function TabCard({ t, real, nut, gui, cho = [], may }) {
+function TabCard({ t, real, nut, gui, cho = [], may, dm = null }) {
   const has = real ? t.pkg && HAS.includes(t.k) : t.k !== "san" && t.k !== "off";
   const st = ST[t.k] || ST.off;
   const pct = !has ? 0 : real ? pctOf(t) : Math.min(100, (t.g / t.tg) * 100);
@@ -162,7 +167,7 @@ function TabCard({ t, real, nut, gui, cho = [], may }) {
           <span className="ml-auto min-w-0 truncate text-[13px] text-ink-3" title={right}>{right}</span>
         </div>
         {real && (t.kq || t.health) && <p className={cn("mt-1.5 truncate text-[12.5px]", t.health ? "font-medium text-warn-ink" : "text-ink-3")} title={t.health || t.kq}>{t.health || `Kết quả: ${t.kq}`}</p>}
-        {nut && <NutTab t={t} gui={gui} cho={cho} may={may} />}
+        {nut && <NutTab t={t} gui={gui} cho={cho} may={may} dm={dm} />}
       </article>
     );
   }
@@ -195,7 +200,7 @@ function TabCard({ t, real, nut, gui, cho = [], may }) {
       </dl>
       {real && t.san > 0 && <p className="mt-2 text-[12.5px] text-ink-3">Acc chưa full sân · tính theo số dư (đã trừ phí sân {fmt(t.san)})</p>}
       {t.health && <p className="mt-3 flex items-center gap-1.5 rounded-lg bg-warn-soft px-2.5 py-1.5 text-[13px] font-medium text-warn-ink"><AlertTriangle className="size-3.5" />{t.health}</p>}
-      {nut && <NutTab t={t} gui={gui} cho={cho} may={may} />}
+      {nut && <NutTab t={t} gui={gui} cho={cho} may={may} dm={dm} />}
     </article>
   );
 }
@@ -208,15 +213,17 @@ const NEW_RX = /^NEW\d+$/i;
 const NGAY = [-1, -0.5, 0.5, 1, 2];
 const soNgay = (x) => (x > 0 ? "+" : "−") + String(Math.abs(x)).replace(".", ",");
 
-function tacVu(t) {
+function tacVu(t, dm = null) {
   const out = [];
   if (t.kl && !t.pkg) out.push({ l: "mo_khoa" });
   if (t.co === "D") out.push(NEW_RX.test(t.ten) ? { l: "go_dirty" } : { l: "go_dirty", khong: `Tên giả lập "${t.ten || "?"}" chưa phải NEW<số>: chưa xóa + clone lại thì máy sẽ từ chối.` });
   if (t.k === "sach" && !t.co && !t.pkg) out.push({ l: "dat_dirty" });
   if (t.pkg && t.p != null && t.td > 0 && ["cay", "cho", "dung", "warn"].includes(t.k) && !t.ps) out.push({ l: "ngay_bu" });
   if (t.ps && t.p != null) out.push({ l: "dong_goi" });
-  if (t.pkg && t.p != null && !t.ps && (t.k === "cay" || (t.k === "cho" && !t.nghi))) out.push({ l: "tam_dung" });
-  if (t.pkg && t.k === "dung") out.push({ l: "chay_tiep" });
+  // dm: true = vừa gửi Tạm dừng (máy chưa báo tóm tắt mới), false = vừa gửi Tiếp tục, null = theo dữ liệu máy
+  const dangDung = dm ?? (t.k === "dung");
+  if (t.pkg && dangDung) out.push({ l: "chay_tiep" });
+  else if (t.pkg && t.p != null && !t.ps && (t.k === "cay" || t.k === "dung" || (t.k === "cho" && !t.nghi))) out.push({ l: "tam_dung" });
   return out;
 }
 
@@ -226,8 +233,8 @@ function useHaiLan(ms = 5000) {
   return [lan, setLan];
 }
 
-function NutTab({ t, gui, cho, may }) {
-  const acts = tacVu(t);
+function NutTab({ t, gui, cho, may, dm }) {
+  const acts = tacVu(t, dm);
   const [mo, setMo] = useState(null);           // lệnh đang mở hộp xác nhận
   const [so, setSo] = useState("");
   const [ngay, setNgay] = useState(1);

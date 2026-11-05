@@ -19,7 +19,7 @@ export const LOAI = {
   dong_goi: { l: "Đóng gói đã dừng", g: "Gói đã dừng (KICK / CANCEL / dừng) -> đã đóng" },
   mo_lai_goi: { l: "Mở lại gói", g: "Hoàn tác đóng gói: trả gói về trạng thái cũ" },
   tam_dung: { l: "Tạm dừng bot", g: "Bot nhả cần di chuyển và đứng yên (như nút ⏸ Dashboard) - không tắt bot, không tắt LD" },
-  chay_tiep: { l: "Chạy tiếp", g: "Bot chạy tiếp (như nút ▶ Dashboard)" },
+  chay_tiep: { l: "Tiếp tục bot", g: "Bot chạy tiếp (như nút ▶ Dashboard)" },
 };
 export const KQ = {
   cho: { l: "Đang chờ máy", tone: "run" },
