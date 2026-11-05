@@ -3,12 +3,11 @@ import { Card, CardHead, Badge, Dot, CountUp, GoldBar, Gold, CopyBtn, Button, Sa
 import { machines as mMau, alerts, soon as soonMau, slow as slowMau } from "../data.js";
 import { issuesOf, soonOf, slowOf, newToday, ngayText } from "../live.js";
 
-export default function TongQuan({ upd, live }) {
+export default function TongQuan({ upd, live, data, issues: liveIssues }) {
   const real = !!live;
   const machines = real ? live.real : mMau;
   const none = real ? live.machines.filter((m) => m.s === "none") : [];
-  const issues = real ? issuesOf(live) : alerts.filter((a) => a.day === "Hôm nay" && a.sev !== "info");
-  const mauTD = real ? alerts.filter((a) => a.day === "Hôm nay" && a.sev !== "info" && a.src === "Tổng đài") : [];
+  const issues = real ? (liveIssues || issuesOf(live)).map((a) => ({ ...a, time: a.time || "bây giờ" })) : alerts.filter((a) => a.day === "Hôm nay" && a.sev !== "info");
   const soon = real ? soonOf(live) : soonMau;
   const slow = real ? slowOf(live) : slowMau;
   const nErr = issues.filter((a) => a.sev === "err").length;
@@ -33,7 +32,7 @@ export default function TongQuan({ upd, live }) {
               <Dot tone={sev} pulse={sev === "err"} className="size-3.5" />
               <h1 id="tq-h" className="text-[20px] leading-[1.2] font-extrabold tracking-[0.005em] uppercase sm:text-[27px]">
                 {real && !machines.length ? <span className="text-warn-ink">Chưa máy nào gửi dữ liệu</span> : sev === "ok" ? <span className="text-ok-ink">{real && none.length ? `${machines.length} máy đang chạy ổn` : "Mọi máy đang chạy ổn"}</span> : (
-                  <>{nErr > 0 && <span className="block whitespace-nowrap text-err-ink sm:inline">{nErr} máy mất tín hiệu</span>}{nErr > 0 && nWarn > 0 && <span className="mx-3 hidden text-ink-3/60 sm:inline">·</span>}{nWarn > 0 && <span className="block whitespace-nowrap text-warn-ink sm:inline">{nWarn} việc cần xem</span>}</>
+                  <>{nErr > 0 && <span className="block whitespace-nowrap text-err-ink sm:inline">{nErr} lỗi nặng</span>}{nErr > 0 && nWarn > 0 && <span className="mx-3 hidden text-ink-3/60 sm:inline">·</span>}{nWarn > 0 && <span className="block whitespace-nowrap text-warn-ink sm:inline">{nWarn} việc cần xem</span>}</>
                 )}
               </h1>
             </div>
@@ -56,21 +55,6 @@ export default function TongQuan({ upd, live }) {
                   <span className="mt-1 hidden shrink-0 items-center gap-1 text-[13px] font-medium text-ink-2 group-hover:text-ink sm:inline-flex">
                     {a.go ? `Xem ${a.go}` : "Xem"} <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
                   </span>
-                </a>
-              </li>
-            ))}
-            {mauTD.map((a) => (
-              <li key={"mau" + a.id}>
-                <a href="#canh-bao" className="group flex items-start gap-3 rounded-2xl px-3 py-3.5 opacity-75 transition-colors hover:bg-white/70 sm:px-4">
-                  <Dot tone="off" className="mt-[7px]" />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
-                      <span className="text-[15.5px] font-semibold text-ink-2">{a.t}</span>
-                      <SampleTag small />
-                      <span className="text-[12.5px] text-ink-3">{a.src} · chưa nối Tổng đài</span>
-                    </div>
-                    <p className="mt-0.5 text-[14px] text-ink-3">{a.p}</p>
-                  </div>
                 </a>
               </li>
             ))}
@@ -170,41 +154,109 @@ export default function TongQuan({ upd, live }) {
         </div>
 
         <div className="space-y-6">
-          {/* số thứ tự đơn */}
-          <Card>
-            <CardHead title="Số thứ tự đơn" right={real ? <SampleTag small /> : null} />
-            <div className="grid grid-cols-2 gap-px overflow-hidden border-y border-line-2 bg-line-2">
-              <div className="bg-white px-5 py-3.5"><div className="text-[12.5px] text-ink-3">NGL kế tiếp</div><div className="mt-0.5 text-[22px] font-bold tracking-[-0.01em] tnum">NGL235</div></div>
-              <div className="bg-white px-5 py-3.5"><div className="text-[12.5px] text-ink-3">IML hôm nay</div><div className="mt-0.5 text-[22px] font-bold tracking-[-0.01em] tnum">IML5</div></div>
-            </div>
-            <div className="flex items-start gap-3 px-5 py-4">
-              <Badge tone="warn" dot>TREO</Badge>
-              <p className="text-[13.5px] text-ink-2"><span className="font-semibold text-ink">NGL233</span> lỗi NO_LINK_BUTTON trên M38 tab 7.</p>
-            </div>
-          </Card>
-
-          {/* máy nhà */}
-          <Card>
-            <CardHead title="Máy nhà" right={real ? <SampleTag small /> : null} />
-            <ul className="divide-y divide-line-2 border-t border-line-2">
-              {[
-                { I: Radio, l: "Tổng đài", v: "Đang nhận code", tone: "ok" },
-                { I: Bot, l: "Bot Discord", v: "Online", tone: "ok" },
-                { I: Inbox, l: "Code chờ gán", v: "0", tone: "off" },
-              ].map(({ I, l, v, tone }) => (
-                <li key={l} className="flex items-center gap-3 px-5 py-3">
-                  <I className="size-4 text-ink-3" strokeWidth={1.9} />
-                  <span className="text-[14px]">{l}</span>
-                  <span className={cn("ml-auto inline-flex items-center gap-1.5 text-[13.5px] font-medium", TONE[tone].text)}>{tone !== "off" && <Dot tone={tone} className="size-2" />}{v}</span>
-                </li>
-              ))}
-            </ul>
-            <div className="px-5 pt-1 pb-5">
-              <Button variant="danger" className="w-full" disabled title="Làm ở lát 5"><Power />Ngừng nhận code · lát 5</Button>
-            </div>
-          </Card>
+          {real ? <SoCard so={data && data.so} nha={data && data.nha} /> : <SoMau />}
+          {real ? <NhaCard nha={data && data.nha} /> : <NhaMau />}
         </div>
       </div>
     </div>
+  );
+}
+
+/* ---------- số thứ tự đơn (máy nhà gửi /web/so) ---------- */
+function SoCard({ so, nha }) {
+  if (!nha || !so) return (
+    <Card>
+      <CardHead title="Số thứ tự đơn" />
+      <p className="border-t border-line-2 px-5 py-4 text-[13.5px] text-ink-3">Máy nhà chưa gửi dữ liệu (chưa cài gói WEB TỔNG ĐÀI).</p>
+    </Card>
+  );
+  const treo = so.treo || [], viec = so.viec || [];
+  return (
+    <Card>
+      <CardHead title="Số thứ tự đơn" right={so.giu ? <span className="tnum text-[12.5px] text-ink-3">{so.giu} số đang giữ cho đơn chạy</span> : null} />
+      <div className="grid grid-cols-2 gap-px overflow-hidden border-y border-line-2 bg-line-2">
+        <div className="bg-white px-5 py-3.5"><div className="text-[12.5px] text-ink-3">NGL kế tiếp</div><div className="mt-0.5 text-[22px] font-bold tracking-[-0.01em] tnum">NGL{so.ngl.ke}</div>
+          {so.ngl.trong && so.ngl.trong.length > 0 && <div className="mt-0.5 text-[12px] text-ink-3 tnum">số trống: {so.ngl.trong.join(", ")}</div>}</div>
+        <div className="bg-white px-5 py-3.5"><div className="text-[12.5px] text-ink-3">IML hôm nay</div><div className="mt-0.5 text-[22px] font-bold tracking-[-0.01em] tnum">IML{so.iml.ke}</div>
+          {so.iml.trong && so.iml.trong.length > 0 && <div className="mt-0.5 text-[12px] text-ink-3 tnum">số trống: {so.iml.trong.join(", ")}</div>}</div>
+      </div>
+      {!treo.length && !viec.length && !(so.hong || []).length && <p className="px-5 py-3.5 text-[13.5px] text-ok-ink">Không có số nào đang TREO.</p>}
+      {treo.length > 0 && (
+        <ul className="divide-y divide-line-2">
+          {treo.map((x) => (
+            <li key={x.s + x.oid} className="flex items-start gap-3 px-5 py-3">
+              <Badge tone="warn" dot>TREO</Badge>
+              <p className="min-w-0 text-[13.5px] text-ink-2"><span className="font-semibold text-ink">{x.s}</span> · đơn #{x.oid}: {x.ly}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+      {viec.length > 0 && <p className="border-t border-line-2 px-5 py-3 text-[13px] text-warn-ink">{viec.length} việc cần kiểm tay (dat_so.py): {viec.slice(0, 5).map((x) => `#${x.oid}${x.loai ? " " + x.loai : ""}`).join(", ")}{viec.length > 5 ? "…" : ""}</p>}
+      {(so.hong || []).length > 0 && <p className="border-t border-line-2 px-5 py-3 text-[13px] text-err-ink">Quỹ số bị hỏng: {so.hong.join(", ")}</p>}
+    </Card>
+  );
+}
+function SoMau() {
+  return (
+    <Card>
+      <CardHead title="Số thứ tự đơn" right={<SampleTag small />} />
+      <div className="grid grid-cols-2 gap-px overflow-hidden border-y border-line-2 bg-line-2">
+        <div className="bg-white px-5 py-3.5"><div className="text-[12.5px] text-ink-3">NGL kế tiếp</div><div className="mt-0.5 text-[22px] font-bold tracking-[-0.01em] tnum">NGL235</div></div>
+        <div className="bg-white px-5 py-3.5"><div className="text-[12.5px] text-ink-3">IML hôm nay</div><div className="mt-0.5 text-[22px] font-bold tracking-[-0.01em] tnum">IML5</div></div>
+      </div>
+      <div className="flex items-start gap-3 px-5 py-4"><Badge tone="warn" dot>TREO</Badge><p className="text-[13.5px] text-ink-2"><span className="font-semibold text-ink">NGL233</span> lỗi NO_LINK_BUTTON trên M38 tab 7.</p></div>
+    </Card>
+  );
+}
+
+/* ---------- máy nhà (máy nhà gửi /web/nha) ---------- */
+const tuoiP = (s) => (s < 90 ? "vừa xong" : s < 3600 ? `${Math.round(s / 60)} phút trước` : `${Math.floor(s / 3600)} giờ trước`);
+function NhaCard({ nha }) {
+  const now = Date.now() / 1000;
+  const rows = [];
+  if (!nha) rows.push({ I: Radio, l: "Tổng đài", v: "Chưa gửi dữ liệu", tone: "off" });
+  else {
+    const age = now - (nha.t || 0);
+    const mat = age > 15 * 60;
+    rows.push({ I: Radio, l: "Tổng đài", v: mat ? `Mất tín hiệu · ${tuoiP(age)}` : nha.tre ? "Bị đứng > 3 phút" : "Đang nhận code", tone: mat || nha.tre ? "err" : "ok" });
+    rows.push({ I: Bot, l: "Bot Discord", v: nha.dc === "loi" ? "Đọc lỗi" : nha.dc === "ok" ? "Đọc được" : "Chưa rõ", tone: nha.dc === "loi" ? "warn" : nha.dc === "ok" ? "ok" : "off" });
+    rows.push({ I: Inbox, l: "Code chờ gán", v: String(nha.cho || 0) + (nha.dang ? ` · ${nha.dang} đang nối` : ""), tone: nha.cho ? "warn" : "off" });
+    const xs = Object.entries(nha.xeon || {});
+    if (xs.length) {
+      const song = xs.filter(([, v]) => v).length;
+      const kho = Object.values(nha.kho || {}).reduce((a, b) => a + b, 0);
+      rows.push({ I: Radio, l: "Xeon có tín hiệu", v: `${song}/${xs.length} · ${kho} tab sẵn sàng`, tone: song < xs.length ? "warn" : "ok" });
+    }
+  }
+  return (
+    <Card>
+      <CardHead title="Máy nhà" right={nha ? <span className="tnum text-[12.5px] text-ink-3">gửi {tuoiP(now - (nha.t || 0))}</span> : null} />
+      <ul className="divide-y divide-line-2 border-t border-line-2">
+        {rows.map(({ I, l, v, tone }) => (
+          <li key={l} className="flex items-center gap-3 px-5 py-3">
+            <I className="size-4 text-ink-3" strokeWidth={1.9} />
+            <span className="text-[14px]">{l}</span>
+            <span className={cn("ml-auto inline-flex items-center gap-1.5 text-right text-[13.5px] font-medium", TONE[tone].text)}>{tone !== "off" && <Dot tone={tone} className="size-2" />}{v}</span>
+          </li>
+        ))}
+      </ul>
+      {nha && nha.dc === "loi" && nha.dc_e && <p className="px-5 pb-1 text-[12.5px] text-warn-ink">{nha.dc_e}</p>}
+      <div className="px-5 pt-1 pb-5">
+        <Button variant="danger" className="w-full" disabled title="Làm ở lát 5"><Power />Ngừng nhận code · lát 5</Button>
+      </div>
+    </Card>
+  );
+}
+function NhaMau() {
+  return (
+    <Card>
+      <CardHead title="Máy nhà" right={<SampleTag small />} />
+      <ul className="divide-y divide-line-2 border-t border-line-2">
+        {[{ I: Radio, l: "Tổng đài", v: "Đang nhận code", tone: "ok" }, { I: Bot, l: "Bot Discord", v: "Online", tone: "ok" }, { I: Inbox, l: "Code chờ gán", v: "0", tone: "off" }].map(({ I, l, v, tone }) => (
+          <li key={l} className="flex items-center gap-3 px-5 py-3"><I className="size-4 text-ink-3" strokeWidth={1.9} /><span className="text-[14px]">{l}</span>
+            <span className={cn("ml-auto inline-flex items-center gap-1.5 text-[13.5px] font-medium", TONE[tone].text)}>{tone !== "off" && <Dot tone={tone} className="size-2" />}{v}</span></li>
+        ))}
+      </ul>
+    </Card>
   );
 }

@@ -1,20 +1,30 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import * as Popover from "@radix-ui/react-popover";
-import { Plus, Search, ArrowDownToLine, X, ChevronDown } from "lucide-react";
+import { Plus, Search, ArrowDownToLine, X, ChevronDown, Upload, FileUp } from "lucide-react";
 import { Badge, CopyBtn, Button, Segmented, GoldBar, Coin, cn } from "../ui.jsx";
-import { isUsd, fmt, curOf, tinhHan, todayDDMM } from "../data.js";
+import { isUsd, fmt, curOf, tinhHan } from "../data.js";
+import { ymd } from "../store.js";
+import { docSheet, keHoachNhap } from "../nhap.js";
 
 const SRC_TONE = { NGL: "bg-[oklch(0.95_0.03_272)] text-s-ngl", IML: "bg-[oklch(0.95_0.035_192)] text-[oklch(0.45_0.09_192)]", "Khách VN": "bg-gold-soft text-gold-ink", Tay: "bg-off-soft text-ink-2" };
-const STATUS = { cay: { l: "Đang cày", tone: "run" }, xong: { l: "Đã xong", tone: "ok" }, ban: { l: "Acc bị khóa", tone: "err" } };
-const dk = (d) => { const [a, b] = d.split("/"); return +b * 100 + +a; };
-const TODAY = todayDDMM();
+const STATUS = {
+  cay: { l: "Đang cày", tone: "run" }, xong: { l: "Đã xong", tone: "ok" }, ban: { l: "Acc bị khóa", tone: "err" },
+  dung: { l: "Đã dừng", tone: "warn" }, noi: { l: "Đang nối code", tone: "wait" }, kiem: { l: "Cần kiểm tay", tone: "err" },
+};
+const XONG = ["xong", "ban", "dung"];
+const TODAY = ymd(Date.now());
+const ddmm = (day) => { const [, m, d] = day.split("-"); return `${d}/${m}`; };
 
-export default function Don({ orders: raw, setOrders, prices }) {
-  const orders = raw.map((o) => ({ ...o, ...tinhHan(o, prices) }));
+export default function Don({ orders: raw, prices, onSave, ready }) {
+  const orders = useMemo(() => raw.map((o) => {
+    const h = tinhHan(o, prices);
+    if (o.st === "dung") return { ...o, ...h, left: "Đã dừng", ls: "none" };
+    if (o.st === "noi" || o.st === "kiem") return { ...o, ...h, left: STATUS[o.st].l, ls: o.st === "kiem" ? "late" : "none" };
+    return { ...o, ...h };
+  }), [raw, prices]);
   const [tab, setTab] = useState("all");
   const [src, setSrc] = useState("all");
-  const [closed, setClosed] = useState(() => new Set([...new Set(orders.map((x) => x.start))].filter((d) => orders.filter((x) => x.start === d).every((x) => x.st === "xong"))));
-  const toggle = (d) => setClosed((c) => { const n = new Set(c); n.has(d) ? n.delete(d) : n.add(d); return n; });
+  const [open, setOpen] = useState({});                         // ngày -> true/false do bạn bấm (mặc định: ngày xong hết thì thu gọn)
   const [q, setQ] = useState("");
   const [srt, setSrt] = useState("asc");
   const [flash, setFlash] = useState(null);
@@ -26,24 +36,36 @@ export default function Don({ orders: raw, setOrders, prices }) {
     miss: orders.filter((x) => !x.rev).length,
     xong: orders.filter((x) => x.st === "xong").length,
     ban: orders.filter((x) => x.st === "ban").length,
+    kiem: orders.filter((x) => x.st === "kiem" || x.st === "noi").length,
   };
-  const match = { all: () => true, cay: (x) => x.st === "cay", late: (x) => x.ls === "late", miss: (x) => !x.rev, xong: (x) => x.st === "xong", ban: (x) => x.st === "ban" };
-  let list = orders.filter((x) => (src === "all" || x.src === src) && (!q || x.name.toLowerCase().includes(q.toLowerCase())) && match[tab](x));
+  const match = { all: () => true, cay: (x) => x.st === "cay", late: (x) => x.ls === "late", miss: (x) => !x.rev, xong: (x) => x.st === "xong", ban: (x) => x.st === "ban", kiem: (x) => x.st === "kiem" || x.st === "noi" };
+  const ql = q.trim().toLowerCase();
+  const list = orders.filter((x) => (src === "all" || x.src === src) && (!ql || x.name.toLowerCase().includes(ql)) && match[tab](x));
   const dueK = (x) => (x.dueT == null ? Infinity : x.dueT);
-  const groups = [...new Set(list.map((x) => x.start))].sort((a, b) => (srt === "desc" ? dk(b) - dk(a) : dk(a) - dk(b)))
-    .map((d) => { let os = list.filter((x) => x.start === d); if (srt === "due") os = [...os].sort((a, b) => dueK(a) - dueK(b)); return { d, os }; });
+  const days = [...new Set(list.map((x) => x.day))].sort((a, b) => (srt === "desc" ? (a < b ? 1 : -1) : a < b ? -1 : 1));
+  const groups = days.map((d) => { let os = list.filter((x) => x.day === d); if (srt === "due") os = [...os].sort((a, b) => dueK(a) - dueK(b)); return { d, os }; });
+  const isOpen = (d, os) => (d in open ? open[d] : !!ql || tab !== "all" || !os.every((x) => XONG.includes(x.st)));
+  const toggle = (d, os) => setOpen((c) => ({ ...c, [d]: !isOpen(d, os) }));
 
-  const update = (id, patch) => setOrders((os) => os.map((x) => (x.id === id ? { ...x, ...patch } : x)));
-  const add = (o) => { setOrders((os) => [...os, o]); setTab("all"); setSrc("all"); setClosed((c) => { const n = new Set(c); n.delete(o.start); return n; }); setQ(""); setSrt("asc"); setFlash(o.id); setTimeout(() => endRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 60); };
+  const update = (id, patch) => onSave(Object.fromEntries(Object.entries(patch).map(([k, v]) => [`sua/${id}/${k}`, v === "" ? null : v])));
+  const add = async (o) => {
+    await onSave({ [`don_tay/${o.id}`]: o.v });
+    setTab("all"); setSrc("all"); setOpen((c) => ({ ...c, [o.v.day]: true })); setQ(""); setSrt("asc"); setFlash(o.id);
+    setTimeout(() => endRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 120);
+  };
+  const coCu = orders.some((x) => x.from === "cu");
 
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-[26px] font-bold tracking-[-0.02em] sm:text-[30px]">Đơn hàng</h1>
-          <p className="mt-1 text-[13.5px] text-ink-2 tnum">2.166 đơn · <span className="text-run-ink font-medium">94 đang cày</span> · <span className="text-ok-ink font-medium">2.052 xong</span> · <span className="text-err-ink font-medium">20 acc bị khóa</span></p>
+          <p className="mt-1 text-[13.5px] text-ink-2 tnum">{fmt(orders.length)} đơn · <span className="text-run-ink font-medium">{fmt(C.cay)} đang cày</span> · <span className="text-ok-ink font-medium">{fmt(C.xong)} xong</span> · <span className="text-err-ink font-medium">{fmt(C.ban)} acc bị khóa</span></p>
         </div>
-        <AddOrder onAdd={add} />
+        <div className="flex flex-wrap gap-2">
+          {ready && <ImportOld orders={raw} onSave={onSave} again={coCu} />}
+          <AddOrder onAdd={add} />
+        </div>
       </div>
 
       {/* bộ lọc */}
@@ -54,6 +76,7 @@ export default function Don({ orders: raw, setOrders, prices }) {
             { k: "cay", l: "Đang cày", c: C.cay },
             { k: "late", l: "Quá hạn", c: C.late, ct: "err" },
             { k: "miss", l: "Chưa nhập giá", c: C.miss, ct: "warn" },
+            ...(C.kiem ? [{ k: "kiem", l: "Cần kiểm", c: C.kiem, ct: "err" }] : []),
             { k: "xong", l: "Đã xong", c: C.xong },
             { k: "ban", l: "Acc bị khóa", c: C.ban },
           ]} />
@@ -61,7 +84,7 @@ export default function Don({ orders: raw, setOrders, prices }) {
           <label className="relative min-w-[200px] flex-1">
             <span className="sr-only">Tìm đơn</span>
             <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-3" />
-            <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm tên đơn hoặc code"
+            <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm tên đơn"
               className="h-9 w-full rounded-xl border border-line bg-white pr-3 pl-9 text-[14px] placeholder:text-ink-3 focus:border-brand focus:outline-none focus:ring-3 focus:ring-brand/15" />
           </label>
           <Select value={src} onChange={setSrc} label="Nguồn đơn" opts={[["all", "Mọi nguồn"], ["NGL", "NGL"], ["IML", "IML"], ["Khách VN", "Khách VN"], ["Tay", "Đơn tay"]]} />
@@ -69,7 +92,10 @@ export default function Don({ orders: raw, setOrders, prices }) {
         </div>
       </div>
 
+      {!ready && <p className="rounded-2xl border border-dashed border-line bg-white/60 px-4 py-8 text-center text-[14px] text-ink-3">Đang đọc đơn…</p>}
+
       {/* bảng (máy tính) */}
+      {groups.length > 0 && (
       <div className="hidden overflow-hidden rounded-[var(--radius-card)] border border-line bg-white shadow-[var(--shadow-card)] min-[1400px]:block">
         <div className="overflow-x-auto">
           <table className="w-full text-[13.5px]">
@@ -80,39 +106,39 @@ export default function Don({ orders: raw, setOrders, prices }) {
             </thead>
             {groups.map(({ d, os }) => (
               <tbody key={d} className="divide-y divide-line-2 border-t border-line">
-                <tr className="border-y border-[var(--day-line)] bg-[var(--day-bg)]"><td colSpan={7} className="px-5 py-2"><GroupHead d={d} os={os} open={!closed.has(d)} onToggle={() => toggle(d)} /></td></tr>
-                {!closed.has(d) && os.map((x) => (
+                <tr className="border-y border-[var(--day-line)] bg-[var(--day-bg)]"><td colSpan={7} className="px-5 py-2"><GroupHead d={d} os={os} open={isOpen(d, os)} onToggle={() => toggle(d, os)} /></td></tr>
+                {isOpen(d, os) && os.map((x) => (
                 <tr key={x.id} ref={x.id === flash ? endRef : undefined} className={cn("transition-colors hover:bg-wash/50", x.id === flash && "bg-gold-soft/70")}>
                   <td className="py-2.5 pr-2 pl-5">
                     <div className="flex items-center"><span className="max-w-[260px] truncate font-medium" title={x.name}>{x.name}</span><CopyBtn text={x.name} className="size-7" /></div>
-                    <div className="mt-0.5 flex items-center gap-2"><Src s={x.src} /><span className="tnum text-[12.5px] text-ink-3">{x.m} · tab {x.tab}</span></div>
+                    <div className="mt-0.5 flex items-center gap-2"><Src s={x.src} /><Where x={x} /></div>
                   </td>
                   <td className="px-2.5"><Progress x={x} /></td>
                   <td className="px-2.5 tnum whitespace-nowrap font-medium">{x.due}</td>
                   <td className="px-2.5 whitespace-nowrap"><Left x={x} /></td>
                   <td className="px-2.5"><Note x={x} update={update} /></td>
                   <td className="px-2.5"><PricePicker value={x.rev} cur={curOf(x.src)} src={x.src} prices={prices} onPick={(v) => update(x.id, { rev: v })} /></td>
-                  <td className="py-2.5 pr-5 pl-2.5"><Badge tone={STATUS[x.st].tone} dot>{STATUS[x.st].l}</Badge></td>
+                  <td className="py-2.5 pr-5 pl-2.5"><StatusPick x={x} update={update} /></td>
                 </tr>
                 ))}
               </tbody>
             ))}
           </table>
         </div>
-
       </div>
+      )}
 
       {/* thẻ (điện thoại, máy nhỏ) */}
       <div className="space-y-4 min-[1400px]:hidden">
         {groups.map(({ d, os }) => (
-          <section key={d} aria-label={`Ngày thuê ${d}`}>
-            <div className="sticky top-[calc(env(safe-area-inset-top,0px)+3.5rem)] z-10 rounded-2xl border border-[var(--day-line)] bg-[var(--day-bg)] px-4 py-2.5 backdrop-blur-md lg:top-2"><GroupHead d={d} os={os} open={!closed.has(d)} onToggle={() => toggle(d)} /></div>
-            {!closed.has(d) && (
+          <section key={d} aria-label={`Ngày thuê ${ddmm(d)}`}>
+            <div className="sticky top-[calc(env(safe-area-inset-top,0px)+3.5rem)] z-10 rounded-2xl border border-[var(--day-line)] bg-[var(--day-bg)] px-4 py-2.5 backdrop-blur-md lg:top-2"><GroupHead d={d} os={os} open={isOpen(d, os)} onToggle={() => toggle(d, os)} /></div>
+            {isOpen(d, os) && (
             <ul className="mt-3 grid gap-3 lg:grid-cols-2">
               {os.map((x) => (
                 <li key={x.id} ref={x.id === flash ? endRef : undefined} className={cn("rounded-2xl border border-line bg-white p-4 shadow-[var(--shadow-card)]", x.id === flash && "ring-2 ring-gold")}>
             <div className="flex items-start gap-1"><span className="min-w-0 flex-1 text-[14.5px] leading-snug font-semibold break-all">{x.name}</span><CopyBtn text={x.name} className="-mt-1 -mr-1" /></div>
-            <div className="mt-1.5 flex flex-wrap items-center gap-1.5"><Src s={x.src} /><span className="tnum text-[12.5px] text-ink-3">{x.m} · tab {x.tab}</span><Badge tone={STATUS[x.st].tone} dot className="ml-auto">{STATUS[x.st].l}</Badge></div>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5"><Src s={x.src} /><Where x={x} /><StatusPick x={x} update={update} className="ml-auto" /></div>
             <div className="mt-3"><Progress x={x} wide /></div>
             <dl className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-wash/70 px-3 py-2 text-[13px]">
               <div><dt className="text-ink-3">Đến hạn</dt><dd className="tnum font-medium">{x.due}</dd></div>
@@ -132,21 +158,54 @@ export default function Don({ orders: raw, setOrders, prices }) {
       </div>
 
       <div className="flex flex-wrap items-center gap-2 text-[13px] text-ink-3">
-        <span className="tnum">Đang hiện {list.length} đơn mẫu trong {groups.length} ngày. Ngày đã xong hết đơn tự thu gọn, bấm tiêu đề ngày để mở.</span>
-        {!list.length && <Empty />}
-        <Button size="sm" variant="ghost" className="ml-auto" onClick={() => { setClosed(new Set()); const rows = document.querySelectorAll(innerWidth >= 1400 ? "tbody tr" : "main section li"); rows[rows.length - 1]?.scrollIntoView({ behavior: "smooth", block: "center" }); }}><ArrowDownToLine />Xuống đơn mới nhất</Button>
+        {ready && !orders.length && <p className="w-full rounded-2xl border border-dashed border-line bg-white/60 px-4 py-8 text-center text-[14px] text-ink-3">Chưa có đơn nào. Đơn tự động hiện sau khi máy nhà cài gói WEB TỔNG ĐÀI; đơn cũ: bấm “Nhập đơn cũ từ Sheet”.</p>}
+        {orders.length > 0 && <span className="tnum">Đang hiện {fmt(list.length)} đơn trong {groups.length} ngày. Ngày đã xong hết đơn tự thu gọn, bấm tiêu đề ngày để mở.</span>}
+        {orders.length > 0 && !list.length && <Empty />}
+        {list.length > 0 && <Button size="sm" variant="ghost" className="ml-auto" onClick={() => { if (days.length) setOpen((c) => ({ ...c, [days.at(-1)]: true })); setTimeout(() => { const rows = document.querySelectorAll(innerWidth >= 1400 ? "tbody tr" : "main section li"); rows[rows.length - 1]?.scrollIntoView({ behavior: "smooth", block: "center" }); }, 60); }}><ArrowDownToLine />Xuống đơn mới nhất</Button>}
       </div>
     </div>
   );
 }
 
+function Where({ x }) {
+  const t = [x.m, x.tab !== "—" && x.tab != null && x.tab !== "" ? `tab ${x.tab}` : ""].filter(Boolean).join(" · ");
+  return <span className="tnum text-[12.5px] text-ink-3">{t || (x.from === "cu" ? "đơn cũ (Sheet)" : "—")}{x.ly ? ` · ${x.ly}` : ""}</span>;
+}
+
+/* tình trạng: tự động theo máy; bấm để sửa tay (giống cột TÌNH TRẠNG của Sheet) */
+function StatusPick({ x, update, className }) {
+  const s = STATUS[x.st] || STATUS.cay;
+  return (
+    <label className={cn("relative inline-flex cursor-pointer", className)} title="Bấm để sửa tình trạng">
+      <Badge tone={s.tone} dot>{s.l}</Badge>
+      <select aria-label={`Tình trạng đơn ${x.name}`} value="" onChange={(e) => update(x.id, { st: e.target.value === "auto" ? null : e.target.value })} className="absolute inset-0 cursor-pointer opacity-0">
+        <option value="" disabled>Đổi tình trạng</option>
+        {["cay", "xong", "ban", "dung"].map((k) => <option key={k} value={k}>{STATUS[k].l}</option>)}
+        <option value="auto">Tự động theo máy</option>
+      </select>
+    </label>
+  );
+}
+
 const barTone = (x) => (x.g >= x.tg ? "ok" : x.ls === "late" ? "err" : "gold");
 function Progress({ x, wide }) {
+  const box = wide ? "" : "w-[148px]";
+  if (!(x.tg > 0)) {                                            // chưa có số từ máy: đơn đã xong -> đầy; còn lại -> chưa có số
+    const xong = x.st === "xong";
+    const ngay = x.live && x.live.td > 0 && x.live.ngay != null ? Math.min(100, (x.live.ngay / x.live.td) * 100) : null;
+    return (
+      <div className={box}>
+        <div className="tnum text-[12.5px] text-ink-3">{ngay != null ? `${Math.floor(x.live.ngay)}/${x.live.td} ngày` : xong ? "Đã xong" : x.from === "cu" ? "Chưa có số (đơn cũ)" : "Chưa thấy trên máy"}</div>
+        {(xong || ngay != null) && <div className="mt-1 flex items-center gap-2"><GoldBar pct={xong ? 100 : ngay} tone={xong ? "ok" : "gold"} className="h-1 flex-1" /><span className="tnum w-9 text-right text-[12px] font-semibold text-ok-ink">{xong ? "100%" : `${Math.round(ngay)}%`}</span></div>}
+      </div>
+    );
+  }
   const p = Math.min(100, (x.g / x.tg) * 100);
   return (
-    <div className={wide ? "" : "w-[148px]"}>
+    <div className={box}>
       <div className="flex items-center gap-1 whitespace-nowrap tnum text-[12.5px]">
         <span className="font-semibold text-ink">{fmt(x.g)}</span><span className="text-ink-3">/ {fmt(x.tg)}</span><Coin /><span className="sr-only">vàng</span>
+        {!x.live && x.kq && <span className="ml-1 text-[11.5px] text-ink-3">(lần cuối thấy)</span>}
       </div>
       <div className="mt-1 flex items-center gap-2">
         <GoldBar pct={p} tone={x.st === "ban" ? "run" : barTone(x)} className="h-1 flex-1" />
@@ -155,15 +214,17 @@ function Progress({ x, wide }) {
     </div>
   );
 }
-const parseRev = (os) => os.reduce((a, x) => { if (!x.rev) return a; if (isUsd(x.rev)) a.usd += parseFloat(x.rev); else a.vnd += parseInt(x.rev.replace(/\D/g, "")) || 0; return a; }, { vnd: 0, usd: 0 });
+const parseRev = (os) => os.reduce((a, x) => { if (!x.rev) return a; if (isUsd(x.rev)) a.usd += parseFloat(String(x.rev).replace(",", ".")) || 0; else a.vnd += parseInt(x.rev.replace(/\D/g, "")) || 0; return a; }, { vnd: 0, usd: 0 });
 function GroupHead({ d, os, open, onToggle }) {
   const priced = os.filter((x) => x.rev).length;
   const r = parseRev(os);
+  const [y, m, dd] = d.split("-");
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
       <button type="button" onClick={onToggle} aria-expanded={open} className="inline-flex cursor-pointer items-center gap-1.5 text-[14px] font-extrabold tracking-[0.02em] text-[var(--day-ink)] uppercase">
-        <ChevronDown className={cn("size-4 transition-transform", !open && "-rotate-90")} />Ngày thuê: {d}/2026{d === TODAY && <span className="ml-1 rounded-full bg-[#F5C542] px-2 py-0.5 text-[11px] text-[#2A1E00] normal-case">Hôm nay</span>}
+        <ChevronDown className={cn("size-4 transition-transform", !open && "-rotate-90")} />Ngày thuê: {dd}/{m}/{y}{d === TODAY && <span className="ml-1 rounded-full bg-[#F5C542] px-2 py-0.5 text-[11px] text-[#2A1E00] normal-case">Hôm nay</span>}
       </button>
+      <span className="tnum text-[12.5px] text-[var(--day-ink)] opacity-70">{os.length} đơn</span>
       <span className="tnum ml-auto text-[13px] font-semibold text-[var(--day-money)]">{[r.vnd > 0 && `${fmt(r.vnd)}đ`, r.usd > 0 && `${String(+r.usd.toFixed(2)).replace(".", ",")}$`].filter(Boolean).join(" + ") || (priced ? "0đ" : "Chưa có doanh thu")}</span>
     </div>
   );
@@ -247,21 +308,27 @@ function PricePicker({ value, prices, onPick, cur = "both", src }) {
   );
 }
 
-/* ---------- thêm đơn tay ---------- */
+/* ---------- thêm đơn tay (GL. / KICK) -> /web/don_tay ---------- */
 function AddOrder({ onAdd }) {
   const [open, setOpen] = useState(false);
   const [pre, setPre] = useState("GL.");
   const [name, setName] = useState("");
-  const [where, setWhere] = useState("M10 · 5");
+  const [where, setWhere] = useState("");
   const [err, setErr] = useState("");
-  const submit = () => {
+  const [busy, setBusy] = useState(false);
+  const submit = async () => {
     const n = name.trim();
-    if (!n) { setErr("Nhập tên đơn, ví dụ NGL236.150K.04/11"); return; }
-    const [m, tab] = where.split("·").map((s) => s.trim());
-    const tg = (parseInt((n.match(/(\d+)K/i) || [])[1]) || 0) * 1000 || 100000;
-    const full = `${pre}${n}`;
-    onAdd({ id: full + Date.now(), name: full, src: "Tay", m: m || "M10", tab: tab || "—", g: 0, tg, start: TODAY, note: pre === "KICK" ? "Đơn KICK đưa lại" : "", rev: "", st: "cay" });
-    setName(""); setErr(""); setOpen(false);
+    if (!n) { setErr("Nhập tên đơn, ví dụ NGL236.150K.04/11 M10"); return; }
+    const mt = /^\s*M?(\d+)\s*(?:[·.,\s/-]+\s*(?:tab\s*)?(\d+))?\s*$/i.exec(where);
+    if (where.trim() && !mt) { setErr("Máy · tab viết kiểu: M10 · 5 (hoặc để trống)"); return; }
+    const full = pre === "KICK" ? `KICK.${n}` : `${pre}${n}`;
+    const v = { n: full.slice(0, 100), day: TODAY, t: Math.floor(Date.now() / 1000) };
+    if (mt) { v.m = "M" + mt[1]; if (mt[2]) v.tab = +mt[2]; }
+    if (pre === "KICK") v.note = "Đơn KICK đưa lại";
+    setBusy(true);
+    try { await onAdd({ id: "t" + Date.now().toString(36), v }); setName(""); setErr(""); setOpen(false); }
+    catch (e) { setErr("Chưa lưu được (" + ((e && e.code) || "lỗi mạng") + "). Thử lại."); }
+    finally { setBusy(false); }
   };
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
@@ -269,18 +336,73 @@ function AddOrder({ onAdd }) {
       <Popover.Portal>
         <Popover.Content sideOffset={8} align="end" collisionPadding={12} className="glass pop-in z-50 max-h-[var(--radix-popover-content-available-height)] w-[min(340px,calc(100vw-24px))] overflow-y-auto rounded-2xl border border-white/80 p-4 shadow-[var(--shadow-float)]">
           <div className="text-[14px] font-semibold">Thêm đơn tay</div>
+          <p className="mt-0.5 text-[12.5px] text-ink-2">Ngày thuê = hôm nay. Lưu lên web, mọi máy/điện thoại của bạn đều thấy.</p>
           <div className="mt-3"><Segmented label="Loại đơn" value={pre} onChange={setPre} items={[{ k: "GL.", l: "GL." }, { k: "KICK", l: "KICK" }]} className="w-fit" /></div>
           <label className="mt-3 block text-[12.5px] font-medium text-ink-2">Tên đơn
             <div className="mt-1 flex h-9 items-center rounded-xl border border-line bg-white pl-3 focus-within:border-brand focus-within:ring-3 focus-within:ring-brand/15">
-              <span className="text-[13.5px] font-semibold text-ink-3">{pre}</span>
-              <input autoFocus value={name} onChange={(e) => { setName(e.target.value); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && submit()} placeholder="NGL236.150K.04/11" className="h-full min-w-0 flex-1 bg-transparent px-1 text-[13.5px] text-ink focus:outline-none" />
+              <span className="text-[13.5px] font-semibold text-ink-3">{pre === "KICK" ? "KICK." : pre}</span>
+              <input autoFocus value={name} onChange={(e) => { setName(e.target.value); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && submit()} placeholder="NGL236.150K.04/11 M10" className="h-full min-w-0 flex-1 bg-transparent px-1 text-[13.5px] text-ink focus:outline-none" />
             </div>
           </label>
-          {err && <p className="mt-1.5 text-[12.5px] text-err-ink">{err}</p>}
-          <label className="mt-3 block text-[12.5px] font-medium text-ink-2">Máy · tab
-            <input value={where} onChange={(e) => setWhere(e.target.value)} className="mt-1 h-9 w-full rounded-xl border border-line bg-white px-3 text-[13.5px] text-ink focus:border-brand focus:outline-none focus:ring-3 focus:ring-brand/15" />
+          <label className="mt-3 block text-[12.5px] font-medium text-ink-2">Máy · tab <span className="font-normal text-ink-3">(không bắt buộc)</span>
+            <input value={where} onChange={(e) => { setWhere(e.target.value); setErr(""); }} placeholder="M10 · 5" className="mt-1 h-9 w-full rounded-xl border border-line bg-white px-3 text-[13.5px] text-ink focus:border-brand focus:outline-none focus:ring-3 focus:ring-brand/15" />
           </label>
-          <Button variant="default" className="mt-4 w-full" onClick={submit}>Thêm vào cuối danh sách</Button>
+          {err && <p className="mt-1.5 text-[12.5px] text-err-ink">{err}</p>}
+          <Button variant="default" className="mt-4 w-full" onClick={submit} disabled={busy}>{busy ? "Đang lưu…" : "Thêm vào cuối danh sách"}</Button>
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
+  );
+}
+
+/* ---------- nhập đơn cũ 1 lần từ file CSV của Sheet ---------- */
+function ImportOld({ orders, onSave, again }) {
+  const [open, setOpen] = useState(false);
+  const [plan, setPlan] = useState(null);
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  const pick = async (f) => {
+    setMsg(""); setPlan(null);
+    if (!f) return;
+    if (f.size > 5e6) { setMsg("File quá lớn (> 5 MB). Hãy tải riêng tab BACKUP 2026."); return; }
+    const r = docSheet(await f.text());
+    if (r.loi) { setMsg(r.loi); return; }
+    const k = keHoachNhap(r.list, orders);
+    const days = r.list.map((x) => x.d).sort();
+    setPlan({ ...k, n: r.list.length, bo: r.bo, tu: days[0], den: days.at(-1), kb: Math.round(JSON.stringify(k.patch).length / 1024) });
+  };
+  const go = async () => {
+    setBusy(true);
+    try { await onSave(plan.patch); setMsg(`Đã nhập ${fmt(plan.them)} đơn cũ.`); setPlan(null); }
+    catch (e) { setMsg("Chưa lưu được (" + ((e && e.code) || "lỗi mạng") + "). Không có gì bị đổi, thử lại."); }
+    finally { setBusy(false); }
+  };
+  const d2 = (d) => d.split("-").reverse().join("/");
+  return (
+    <Popover.Root open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setPlan(null); setMsg(""); } }}>
+      <Popover.Trigger asChild><Button variant={again ? "ghost" : "outline"}><Upload />{again ? "Nhập lại đơn cũ" : "Nhập đơn cũ từ Sheet"}</Button></Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content sideOffset={8} align="end" collisionPadding={12} className="glass pop-in z-50 max-h-[var(--radix-popover-content-available-height)] w-[min(380px,calc(100vw-24px))] overflow-y-auto rounded-2xl border border-white/80 p-4 shadow-[var(--shadow-float)]">
+          <div className="text-[14px] font-semibold">Nhập đơn cũ từ Google Sheet (1 lần)</div>
+          <ol className="mt-2 list-decimal space-y-1 pl-5 text-[13px] text-ink-2">
+            <li>Mở Sheet “ĐƠN CÀY VÀNG 2025”, chọn tab <b>BACKUP 2026</b>.</li>
+            <li>Tệp → Tải xuống → <b>Giá trị được phân tách bằng dấu phẩy (.csv)</b>.</li>
+            <li>Chọn file vừa tải ở dưới. Web chỉ ĐỌC file, xem trước rồi mới lưu.</li>
+          </ol>
+          {again && <p className="mt-2 rounded-xl bg-warn-soft px-3 py-2 text-[12.5px] text-warn-ink">Đã có đơn cũ trên web. Nhập lại sẽ THAY danh sách đơn cũ bằng file mới (giá / ghi chú bạn đã sửa trên web vẫn giữ nếu tên đơn và ngày thuê không đổi).</p>}
+          <label className="mt-3 flex h-10 cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-line bg-white text-[13.5px] font-medium text-ink-2 hover:border-brand">
+            <FileUp className="size-4" />Chọn file .csv
+            <input type="file" accept=".csv,text/csv" className="sr-only" onChange={(e) => pick(e.target.files && e.target.files[0])} />
+          </label>
+          {plan && (
+            <div className="mt-3 space-y-1 rounded-xl bg-wash px-3 py-2.5 text-[13px] tnum">
+              <div>File có <b>{fmt(plan.n)}</b> đơn, ngày thuê {d2(plan.tu)} → {d2(plan.den)}{plan.bo ? ` · bỏ ${plan.bo} dòng không phải đơn` : ""}.</div>
+              <div>Thêm <b>{fmt(plan.them)}</b> đơn cũ · <b>{fmt(plan.ghep)}</b> đơn trùng tên với đơn đã có (chỉ chép giá / ghi chú / Đã Xong sang).</div>
+              <div className="text-ink-3">Dung lượng ghi ~{plan.kb} KB (1 lần).</div>
+              <Button variant="default" className="mt-2 w-full" onClick={go} disabled={busy}>{busy ? "Đang lưu…" : `Lưu ${fmt(plan.them)} đơn cũ lên web`}</Button>
+            </div>
+          )}
+          {msg && <p role="status" className="mt-2 text-[13px] font-medium text-ink-2">{msg}</p>}
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>

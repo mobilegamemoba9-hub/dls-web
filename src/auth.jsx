@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { LogOut, Copy, Check, ShieldCheck } from "lucide-react";
-import { configured, watchUser, login, logout, allowed, loginError } from "./firebase.js";
+import { configured, mock, watchUser, login, logout, allowed, loginError } from "./firebase.js";
 import { Button } from "./ui.jsx";
 
 /* Cửa vào trang: chưa cấu hình Firebase -> dữ liệu mẫu; có cấu hình -> phải đăng nhập Google đúng tài khoản. */
 export function Gate({ children }) {
   const [user, setUser] = useState(undefined);              // undefined = đang kiểm
   useEffect(() => watchUser(setUser), []);
+  if (mock) return children({ uid: "mock", email: "thu@may" });
   if (!configured) return children(null);
   if (user === undefined) return <Splash />;
   if (!user) return <Login />;

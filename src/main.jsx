@@ -4,14 +4,15 @@ import { LayoutGrid, Server, ListChecks, BarChart3, BellRing, RefreshCw, Palette
 import * as Popover from "@radix-ui/react-popover";
 import "./index.css";
 import { cn, SampleTag, ShellPicker, SHELLS, Button } from "./ui.jsx";
-import { alerts as alertsData, initialOrders, initialPrices } from "./data.js";
+import { alerts as alertsData, initialPrices } from "./data.js";
 import TongQuan from "./pages/TongQuan.jsx";
 import May from "./pages/May.jsx";
 import Don from "./pages/Don.jsx";
 import DoanhThu from "./pages/DoanhThu.jsx";
 import CanhBao from "./pages/CanhBao.jsx";
 import { Gate, UidRow, logout } from "./auth.jsx";
-import { readWeb, configured } from "./firebase.js";
+import { configured } from "./firebase.js";
+import { loadAll, save, localWeb, buildOrders, kqCanGhi, homeIssues, tdAlerts } from "./store.js";
 import { buildLive, issuesOf } from "./live.js";
 
 const NAV = [
@@ -33,19 +34,19 @@ function useHash() {
 
 const LAM_MOI_MS = 120000;
 
-/* Đọc nhánh /web/may trên Firebase (chỉ đọc, 1 lần mỗi lượt làm mới). Lỗi đọc -> giữ bản đọc được gần nhất. */
+/* Đọc dữ liệu /web (lát 3: máy + máy nhà + chỗ bạn sửa). Lỗi đọc -> giữ bản đọc được gần nhất. */
 function useWeb(user, tick) {
-  const [st, setSt] = useState({ k: configured ? "dang" : "chua_noi", raw: null });
+  const [st, setSt] = useState({ k: configured ? "dang" : "chua_noi", data: null });
   useEffect(() => {
     if (!user) return;
     let huy = false;
-    readWeb("may").then(
-      (v) => { if (!huy) setSt({ k: v ? "co" : "trong", n: v ? Object.keys(v).length : 0, raw: v || {}, at: Date.now() }); },
+    loadAll().then(
+      (d) => { if (!huy) setSt({ k: Object.keys(d.may).length || d.nha ? "co" : "trong", n: Object.keys(d.may).length, nha: !!d.nha, data: d, at: Date.now() }); },
       (e) => { if (!huy) setSt((o) => ({ ...o, k: String(e && (e.code || e.message)).toLowerCase().includes("permission") ? "cam" : "loi" })); }
     );
     return () => { huy = true; };
   }, [user, tick]);
-  return st;
+  return [st, setSt];
 }
 const WEB_TEXT = {
   chua_noi: "Chưa nối Firebase · đang xem dữ liệu mẫu",
@@ -54,24 +55,49 @@ const WEB_TEXT = {
   trong: "Firebase: nối được, chưa có máy nào gửi dữ liệu",
   loi: "Firebase: lỗi đọc, thử Làm mới",
 };
-const webText = (w) => (w.k === "co" ? `Firebase: ${w.n} máy gửi dữ liệu thật · Đơn, Doanh thu, Cảnh báo vẫn là dữ liệu mẫu` : WEB_TEXT[w.k]) + (w.raw && (w.k === "cam" || w.k === "loi") ? " · đang hiện lần đọc được gần nhất" : "");
+const webText = (w) => (w.k === "co" ? `Firebase: ${w.n} máy Xeon gửi dữ liệu · máy nhà ${w.nha ? "đã" : "CHƯA"} gửi` : WEB_TEXT[w.k]) + (w.data && (w.k === "cam" || w.k === "loi") ? " · đang hiện lần đọc được gần nhất" : "");
+
+const giaOf = (g) => { const a = Array.isArray(g) ? g : g && typeof g === "object" ? Object.values(g) : null; return a && a.length ? a.filter(Boolean).map((p, id) => ({ id, v: String(p.v), bg: p.bg || "#E9ECF0", fg: p.fg || "#3F4A5A", d: Number.isFinite(p.d) ? p.d : null })) : null; };
 
 function App({ user }) {
   const { v, arg } = useHash();
-  const [orders, setOrders] = useState(initialOrders);
-  const [prices, setPrices] = useState(initialPrices);
-  const [rate, setRate] = useState(25800);
-  const [upd, setUpd] = useState("21:25");
+  const [upd, setUpd] = useState("—");
   const [tick, setTick] = useState(0);
-  const openAlerts = alertsData.filter((a) => a.sev !== "info").length;
+  const [saveErr, setSaveErr] = useState("");
   const [shell, setShellRaw] = useState(() => { try { const v = localStorage.getItem("shell"); return SHELLS.some((x) => x.k === v) ? v : "sky"; } catch { return "sky"; } });
   const setShell = (k) => { setShellRaw(k); try { localStorage.setItem("shell", k); } catch {} };
   useEffect(() => { document.documentElement.dataset.shell = shell; }, [shell]);
   const last = useRef(0);
   const refresh = () => { last.current = Date.now(); setUpd(hm(new Date())); setTick((t) => t + 1); };
-  const web = useWeb(user, tick);
-  const live = useMemo(() => (web.raw ? buildLive(web.raw) : null), [web.raw, tick]);
-  const badge = live ? issuesOf(live).length : openAlerts;
+  const [web, setWeb] = useWeb(user, tick);
+  const data = web.data;
+  const live = useMemo(() => (data ? buildLive(data.may) : null), [data]);
+  const orders = useMemo(() => (data ? buildOrders(data, live) : []), [data, live]);
+  const prices = useMemo(() => (data && giaOf(data.web.gia)) || initialPrices, [data]);
+  const rate = (data && data.web.cfg && +data.web.cfg.rate) || 25800;
+  const issues = useMemo(() => (live ? [...homeIssues(data), ...issuesOf(live)].sort((a, b) => (a.sev === b.sev ? 0 : a.sev === "err" ? -1 : b.sev === "err" ? 1 : 0)) : []), [live, data]);
+  const badge = live ? issues.length : alertsData.filter((a) => a.sev !== "info").length;
+
+  // lưu chỗ bạn sửa rồi vẽ lại ngay (không đọc lại Firebase)
+  const onSave = async (patch) => {
+    try { await save(patch); setSaveErr(""); }
+    catch (e) { setSaveErr("Chưa lưu được: " + ((e && (e.code || e.message)) || "lỗi mạng")); throw e; }
+    setWeb((o) => (o.data ? { ...o, data: { ...o.data, web: localWeb() } } : o));
+  };
+  const setPrices = (fn) => { const next = typeof fn === "function" ? fn(prices) : fn; onSave({ gia: next.map(({ v, bg, fg, d }) => ({ v, bg, fg, d: d ?? null })) }).catch(() => {}); };
+  const setRate = (n) => onSave({ "cfg/rate": n }).catch(() => {});
+
+  // ghi lại trạng thái đơn thấy trên máy (để nhớ khi tab đã xóa); chỉ khi đổi loại / qua mốc 25%
+  const kqDone = useRef("");
+  useEffect(() => {
+    if (!data) return;
+    const p = kqCanGhi(orders);
+    const sig = JSON.stringify(Object.keys(p).sort().map((k) => [k, p[k].st, p[k].p]));
+    if (!Object.keys(p).length || sig === kqDone.current) return;
+    kqDone.current = sig;
+    onSave(p).catch(() => {});
+  }, [orders]);
+
   useEffect(() => {                                           // tự làm mới mỗi 2 phút, CHỈ khi trang đang hiện
     last.current = Date.now(); setUpd(hm(new Date()));
     const id = setInterval(() => { if (document.visibilityState === "visible") refresh(); }, LAM_MOI_MS);
@@ -81,11 +107,11 @@ function App({ user }) {
   }, []);
 
   const page = {
-    "tong-quan": <TongQuan upd={upd} live={live} />,
+    "tong-quan": <TongQuan upd={upd} live={live} data={data} issues={issues} orders={orders} />,
     may: <May code={arg} live={live} />,
-    don: <Don orders={orders} setOrders={setOrders} prices={prices} />,
-    "doanh-thu": <DoanhThu rate={rate} setRate={setRate} prices={prices} setPrices={setPrices} />,
-    "canh-bao": <CanhBao />,
+    don: <Don orders={orders} prices={prices} onSave={onSave} ready={!!data} />,
+    "doanh-thu": <DoanhThu rate={rate} setRate={setRate} prices={prices} setPrices={setPrices} orders={orders} data={data} onSave={onSave} />,
+    "canh-bao": <CanhBao live={live} data={data} issues={issues} />,
   }[v];
 
   return (
@@ -153,7 +179,8 @@ function App({ user }) {
           <button type="button" onClick={refresh} aria-label={`Làm mới, cập nhật lúc ${upd}`} className="grid size-9 place-items-center rounded-xl text-ink-2 hover:bg-white cursor-pointer"><RefreshCw className="size-4" /></button>
         </header>
 
-        <main key={v + tick} className="page-in mx-auto w-full max-w-[1280px] pr-[max(16px,env(safe-area-inset-right,0px))] pl-[max(16px,env(safe-area-inset-left,0px))] pt-5 pb-28 sm:px-6 lg:px-8 xl:px-10 lg:pt-9 lg:pb-14">
+        <main key={v} className="page-in mx-auto w-full max-w-[1280px] pr-[max(16px,env(safe-area-inset-right,0px))] pl-[max(16px,env(safe-area-inset-left,0px))] pt-5 pb-28 sm:px-6 lg:px-8 xl:px-10 lg:pt-9 lg:pb-14">
+          {saveErr && <p role="alert" className="mb-4 rounded-xl bg-err-soft px-4 py-2.5 text-[13.5px] font-medium text-err-ink">{saveErr}</p>}
           {page}
           <p className="mt-10 text-center text-[12.5px] text-ink-3">{webText(web)}.</p>
         </main>

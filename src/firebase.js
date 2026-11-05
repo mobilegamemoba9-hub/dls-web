@@ -1,12 +1,16 @@
-// Kết nối Firebase cho web: đăng nhập Google + đọc nhánh /web của Realtime Database.
-// Web CHỈ đọc /web (nhánh riêng cho web). Không đụng /assign /ack /result /tabs /beat của tool.
+// Kết nối Firebase cho web: đăng nhập Google + đọc/ghi nhánh /web của Realtime Database.
+// Web CHỈ dùng /web. ĐỌC mọi nhánh /web; GHI chỉ chỗ Trọng sửa: /web/sua /web/gia /web/cfg /web/don_tay /web/don_cu /web/cong_no /web/ver.
+// KHÔNG ghi /web/may /web/don /web/don_idx /web/so /web/canh_bao /web/nha (máy gửi). Không đụng /assign /ack /result /tabs /beat của tool.
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut } from "firebase/auth";
-import { getDatabase, ref, get } from "firebase/database";
+import { getDatabase, ref, get, update } from "firebase/database";
 import { firebaseConfig, ALLOWED } from "./firebase-config.js";
 
 let app = null;
-export const configured = !!(firebaseConfig && firebaseConfig.apiKey);
+// Chế độ thử (chỉ dùng khi kiểm tra trang trên máy, không có Firebase): window.__WEB_MOCK__ = { may: {...}, nha: {...}, ... }
+const MOCK = typeof window !== "undefined" ? window.__WEB_MOCK__ : null;
+export const mock = !!MOCK;
+export const configured = !mock && !!(firebaseConfig && firebaseConfig.apiKey);
 
 function init() {
   if (!configured) return null;
@@ -47,7 +51,9 @@ export function allowed(user) {
 }
 
 // Đọc 1 lần (không mở kết nối nghe liên tục) -> chỉ tải khi trang đang hiện + mỗi 2 phút / bấm Làm mới.
+const viaMock = (path) => path.split("/").filter(Boolean).reduce((o, k) => (o == null ? null : o[k] ?? null), MOCK);
 export async function readWeb(path) {
+  if (mock) return structuredClone(viaMock(path));
   const snap = await get(ref(getDatabase(init()), "/web/" + path));
   return snap.exists() ? snap.val() : null;
 }
@@ -59,4 +65,19 @@ export function loginError(e) {
   if (c === "auth/operation-not-allowed") return "Chưa bật đăng nhập Google trong Firebase → Authentication → Sign-in method.";
   if (c === "auth/network-request-failed") return "Mất mạng. Kiểm tra kết nối rồi thử lại.";
   return "Đăng nhập không được (" + (c || "lỗi lạ") + ").";
+}
+
+// Ghi nhiều chỗ trong /web cùng lúc (1 lần, tất cả hoặc không). paths: { "sua/o12/rev": "1.5$", "ver/sua": 123 }.
+const CHO_GHI = /^(sua|gia|cfg|don_tay|don_cu|cong_no|ver)(\/|$)/;
+export async function writeWeb(paths) {
+  for (const k of Object.keys(paths)) if (!CHO_GHI.test(k)) throw new Error("web không được ghi " + k);
+  if (mock) {
+    for (const [k, v] of Object.entries(paths)) {
+      const ks = k.split("/"); let o = MOCK;
+      for (const x of ks.slice(0, -1)) o = o[x] ??= {};
+      if (v === null) delete o[ks.at(-1)]; else o[ks.at(-1)] = structuredClone(v);
+    }
+    return;
+  }
+  await update(ref(getDatabase(init()), "/web"), paths);
 }
