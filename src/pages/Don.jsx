@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useCallback, memo } from "react";
 import * as Popover from "@radix-ui/react-popover";
-import { Plus, Search, ArrowDownToLine, X, ChevronDown, Upload, FileUp, Check, CheckCheck } from "lucide-react";
+import { Plus, Search, ArrowDownToLine, X, ChevronDown, Upload, FileUp, Check, CheckCheck, Trash2, RotateCcw } from "lucide-react";
 import { Badge, CopyBtn, Button, Segmented, GoldBar, Coin, cn } from "../ui.jsx";
 import { isUsd, fmt, curOf, tinhHan } from "../data.js";
 import { ymd } from "../store.js";
@@ -9,9 +9,21 @@ import { docSheet, keHoachNhap } from "../nhap.js";
 const SRC_TONE = { NGL: "bg-[oklch(0.95_0.03_272)] text-s-ngl", IML: "bg-[oklch(0.95_0.035_192)] text-[oklch(0.45_0.09_192)]", "Khách VN": "bg-gold-soft text-gold-ink", Tay: "bg-off-soft text-ink-2" };
 const STATUS = {
   cay: { l: "Đang cày", tone: "run" }, xong: { l: "Đã xong", tone: "ok" }, ban: { l: "Acc bị khóa", tone: "err" },
-  dung: { l: "Đã dừng", tone: "warn" }, bo: { l: "Đã bỏ (không tính)", tone: "off" }, noi: { l: "Đang nối code", tone: "wait" }, kiem: { l: "Cần kiểm tay", tone: "err" },
+  dung: { l: "Đã dừng", tone: "warn" }, noi: { l: "Đang nối code", tone: "wait" }, kiem: { l: "Cần kiểm tay", tone: "err" },
 };
-const XONG = ["xong", "ban", "dung", "bo"];
+const XONG = ["xong", "ban", "dung"];
+const DAY = 86400000;
+// ngày đến hạn chọn tay (sua/<id>/han = "YYYY-MM-DD") thay cho công thức giá
+function hanTay(o, h) {
+  if (!o.han) return h;
+  const t = new Date(o.han + "T00:00:00").getTime();
+  if (!Number.isFinite(t)) return h;
+  const [y, m, d] = o.han.split("-");
+  const r = { ...h, dueT: t, due: `${d}/${m}` };
+  if (["xong", "ban", "dung", "noi", "kiem"].includes(o.st)) return r;
+  const now = new Date(); const n = Math.round((t - new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()) / DAY);
+  return { ...r, left: n < 0 ? `Trễ ${-n} ngày` : n === 0 ? "Hôm nay" : `${n} ngày`, ls: n < 0 ? "late" : "ok" };
+}
 const TODAY = ymd(Date.now());
 const ddmm = (day) => { const [, m, d] = day.split("-"); return `${d}/${m}`; };
 
@@ -24,9 +36,8 @@ function useWide() {
 
 export default function Don({ orders: raw, prices, onSave, ready, reporting }) {
   const orders = useMemo(() => raw.map((o) => {
-    const h = tinhHan(o, prices);
+    const h = hanTay(o, tinhHan(o, prices));
     if (o.st === "dung") return { ...o, ...h, left: "Đã dừng", ls: "none" };
-    if (o.st === "bo") return { ...o, ...h, left: "Đã bỏ", ls: "none" };
     if (o.st === "noi" || o.st === "kiem") return { ...o, ...h, left: STATUS[o.st].l, ls: o.st === "kiem" ? "late" : "none" };
     return { ...o, ...h };
   }), [raw, prices]);
@@ -41,14 +52,15 @@ export default function Don({ orders: raw, prices, onSave, ready, reporting }) {
   const C = {
     cay: orders.filter((x) => x.st === "cay").length,
     late: orders.filter((x) => x.ls === "late").length,
-    miss: orders.filter((x) => !x.rev && x.st !== "bo").length,
+    miss: orders.filter((x) => canGia(x)).length,
     xong: orders.filter((x) => x.st === "xong").length,
     ban: orders.filter((x) => x.st === "ban").length,
     kiem: orders.filter((x) => x.st === "kiem" || x.st === "noi").length,
-    ngoai: orders.filter((x) => x.ngoaiSheet && x.st !== "bo").length,
-    bo: orders.filter((x) => x.st === "bo").length,
+    ngoai: orders.filter((x) => x.ngoaiSheet && !x.xoa).length,
+    xoa: orders.filter((x) => x.xoa).length,
   };
-  const match = { ngoai: (x) => x.ngoaiSheet && x.st !== "bo", bo: (x) => x.st === "bo", all: (x) => x.st !== "bo", cay: (x) => x.st === "cay", late: (x) => x.ls === "late", miss: (x) => !x.rev && x.st !== "bo", xong: (x) => x.st === "xong", ban: (x) => x.st === "ban", kiem: (x) => x.st === "kiem" || x.st === "noi" };
+  const tt = { all: () => true, ngoai: (x) => x.ngoaiSheet, cay: (x) => x.st === "cay", late: (x) => x.ls === "late", miss: canGia, xong: (x) => x.st === "xong", ban: (x) => x.st === "ban", kiem: (x) => x.st === "kiem" || x.st === "noi" };
+  const match = { ...Object.fromEntries(Object.entries(tt).map(([k, f]) => [k, (x) => !x.xoa && f(x)])), xoa: (x) => x.xoa };
   const ql = q.trim().toLowerCase();
   const list = orders.filter((x) => (src === "all" || x.src === src) && (!ql || x.name.toLowerCase().includes(ql)) && match[tab](x));
   const dueK = (x) => (x.dueT == null ? Infinity : x.dueT);
@@ -77,7 +89,7 @@ export default function Don({ orders: raw, prices, onSave, ready, reporting }) {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-[26px] font-bold tracking-[-0.02em] sm:text-[30px]">Đơn hàng</h1>
-          <p className="mt-1 text-[13.5px] text-ink-2 tnum">{fmt(orders.length - C.bo)} đơn · <span className="text-run-ink font-medium">{fmt(C.cay)} đang cày</span> · <span className="text-ok-ink font-medium">{fmt(C.xong)} xong</span> · <span className="text-err-ink font-medium">{fmt(C.ban)} acc bị khóa</span></p>
+          <p className="mt-1 text-[13.5px] text-ink-2 tnum">{fmt(orders.length - C.xoa)} đơn · <span className="text-run-ink font-medium">{fmt(C.cay)} đang cày</span> · <span className="text-ok-ink font-medium">{fmt(C.xong)} xong</span> · <span className="text-err-ink font-medium">{fmt(C.ban)} acc bị khóa</span></p>
         </div>
         <div className="flex flex-wrap gap-2">
           {ready && <ImportOld orders={raw} onSave={onSave} again={coCu} />}
@@ -97,7 +109,7 @@ export default function Don({ orders: raw, prices, onSave, ready, reporting }) {
             { k: "xong", l: "Đã xong", c: C.xong },
             { k: "ban", l: "Acc bị khóa", c: C.ban },
             ...(C.ngoai ? [{ k: "ngoai", l: "Không có trong Sheet", c: C.ngoai, ct: "warn" }] : []),
-            ...(C.bo ? [{ k: "bo", l: "Đã bỏ", c: C.bo }] : []),
+            ...(C.xoa ? [{ k: "xoa", l: "Đã xóa", c: C.xoa }] : []),
           ]} />
         <div className="flex flex-wrap gap-2">
           <label className="relative min-w-[200px] flex-1">
@@ -167,11 +179,11 @@ const Row = memo(function Row({ x, prices, update, flash, rowRef }) {
         <div className="mt-0.5 flex items-center gap-2"><Src s={x.src} /><Where x={x} /></div>
       </td>
       <td className="px-2.5"><Progress x={x} /></td>
-      <td className="px-2.5 tnum whitespace-nowrap font-medium">{x.due}</td>
+      <td className="px-2.5 tnum whitespace-nowrap font-medium"><DueCell x={x} prices={prices} update={update} /></td>
       <td className="px-2.5 whitespace-nowrap"><Left x={x} /></td>
       <td className="px-2.5"><Note x={x} update={update} /></td>
-      <td className="px-2.5"><PricePicker value={x.rev} cur={curOf(x.src)} src={x.src} prices={prices} onPick={(v) => update(x.id, { rev: v })} /></td>
-      <td className="py-2.5 pr-5 pl-2.5"><div className="flex items-center gap-1.5"><StatusPick x={x} update={update} /><QuickXong x={x} update={update} /></div></td>
+      <td className="px-2.5"><PricePicker value={x.rev} cur={curOf(x.src)} src={x.src} prices={prices} none={x.st === "ban"} onPick={(v) => update(x.id, { rev: v })} /></td>
+      <td className="py-2.5 pr-5 pl-2.5"><div className="flex items-center gap-1.5"><StatusPick x={x} update={update} /><QuickXong x={x} update={update} /><DelBtn x={x} update={update} /></div></td>
     </tr>
   );
 });
@@ -182,20 +194,49 @@ const CardRow = memo(function CardRow({ x, prices, update, flash, rowRef }) {
       <div className="mt-1.5 flex flex-wrap items-center gap-1.5"><Src s={x.src} /><Where x={x} /><span className="ml-auto flex items-center gap-1.5"><QuickXong x={x} update={update} /><StatusPick x={x} update={update} /></span></div>
       <div className="mt-3"><Progress x={x} wide /></div>
       <dl className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-wash/70 px-3 py-2 text-[13px]">
-        <div><dt className="text-ink-3">Đến hạn</dt><dd className="tnum font-medium">{x.due}</dd></div>
+        <div><dt className="text-ink-3">Đến hạn</dt><dd className="tnum font-medium"><DueCell x={x} prices={prices} update={update} /></dd></div>
         <div><dt className="text-ink-3">Còn lại</dt><dd><Left x={x} /></dd></div>
       </dl>
       <div className="mt-3 flex items-center gap-3">
         <span className="text-[12.5px] text-ink-3">Doanh thu</span>
-        <PricePicker value={x.rev} cur={curOf(x.src)} src={x.src} prices={prices} onPick={(v) => update(x.id, { rev: v })} />
+        <PricePicker value={x.rev} cur={curOf(x.src)} src={x.src} prices={prices} none={x.st === "ban"} onPick={(v) => update(x.id, { rev: v })} />
       </div>
-      <div className="mt-2.5"><Note x={x} update={update} wide /></div>
+      <div className="mt-2.5 flex items-center gap-2"><div className="min-w-0 flex-1"><Note x={x} update={update} wide /></div><DelBtn x={x} update={update} /></div>
     </li>
   );
 });
 
 /* nút nhanh "Đã xong" cho đơn đang hiện Đang cày mà KHÔNG thấy trên máy nào (đơn cũ đã xong nhưng Sheet/web chưa đổi) */
-const canXong = (x) => x.st === "cay" && !x.live;
+const canXong = (x) => x.st === "cay" && !x.live && !x.xoa;
+const canGia = (x) => !x.rev && !x.xoa && x.st !== "ban";       // acc bị khóa: không cần nhập giá
+
+/* xóa dòng (đơn test...): bấm 2 lần. Chỉ ẩn trên web (sua/<id>/xoa), không đụng dữ liệu máy; khôi phục ở bộ lọc "Đã xóa" */
+function DelBtn({ x, update }) {
+  const [ok, setOk] = useState(false);
+  if (x.xoa) return (
+    <button type="button" onClick={() => update(x.id, { xoa: "", ...(x.stBo ? { st: "" } : {}) })} className="inline-flex h-6 cursor-pointer items-center gap-1 rounded-full border border-line bg-white px-2 text-[12px] font-semibold whitespace-nowrap text-ink-2 hover:bg-wash"><RotateCcw className="size-3.5" />Khôi phục</button>
+  );
+  return (
+    <button type="button" onClick={() => { if (!ok) { setOk(true); return; } setOk(false); update(x.id, { xoa: 1 }); }} onBlur={() => setOk(false)}
+      aria-label={`Xóa đơn ${x.name}`} title="Xóa dòng đơn này khỏi web (đơn test, đơn nhầm). Bấm 2 lần."
+      className={cn("inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-full px-1.5 text-[12px] font-semibold whitespace-nowrap", ok ? "bg-err text-white" : "text-ink-3 hover:bg-err-soft hover:text-err-ink")}>
+      <Trash2 className="size-3.5" />{ok && "Bấm lần nữa để xóa"}
+    </button>
+  );
+}
+
+/* đến hạn: giá có số ngày -> theo công thức Sheet; giá KHÔNG có số ngày (0đ: khách gửi lại / tặng...) hoặc đã chọn tay -> chọn ngày */
+function DueCell({ x, prices, update }) {
+  const p = x.rev ? prices.find((q) => q.v === x.rev) : null;
+  const tay = !!x.han || (x.rev && (!p || p.d == null));
+  if (!tay) return x.due;
+  return (
+    <span className="inline-flex items-center gap-1">
+      <input type="date" value={x.han || ""} onChange={(e) => update(x.id, { han: e.target.value })} aria-label={`Ngày đến hạn đơn ${x.name}`}
+        title="Giá này không có số ngày cày: chọn ngày đến hạn tay" className={cn("tnum h-7 w-[124px] rounded-lg border px-1.5 text-[12.5px]", x.han ? "border-line bg-white" : "border-dashed border-warn/60 bg-warn-soft text-warn-ink")} />
+    </span>
+  );
+}
 function QuickXong({ x, update }) {
   if (!canXong(x)) return null;
   return (
@@ -211,7 +252,7 @@ function Where({ x }) {
   return (
     <>
       <span className="tnum text-[12.5px] text-ink-3">{t || (x.from === "cu" ? "đơn cũ (Sheet)" : "—")}{x.ly ? ` · ${x.ly}` : ""}</span>
-      {x.ngoaiSheet && x.st !== "bo" && <span title="Tổng đài đã nối code và tạo gói cho đơn này, nhưng Sheet BACKUP 2026 không có dòng nào cùng tên. Nếu đơn đã hủy / làm lại tay: đổi tình trạng thành 'Đã bỏ'." className="rounded-md bg-warn-soft px-1.5 py-0.5 text-[11.5px] font-semibold whitespace-nowrap text-warn-ink">Không có trong Sheet</span>}
+      {x.ngoaiSheet && !x.xoa && <span title="Tổng đài đã nối code và tạo gói cho đơn này, nhưng Sheet BACKUP 2026 không có dòng nào cùng tên. Đơn test / làm lại tay: bấm thùng rác để xóa khỏi web." className="rounded-md bg-warn-soft px-1.5 py-0.5 text-[11.5px] font-semibold whitespace-nowrap text-warn-ink">Không có trong Sheet</span>}
     </>
   );
 }
@@ -224,7 +265,7 @@ function StatusPick({ x, update, className }) {
       <Badge tone={s.tone} dot>{s.l}<ChevronDown className="-mr-1 size-3 opacity-60" /></Badge>
       <select aria-label={`Tình trạng đơn ${x.name}`} value="" onChange={(e) => update(x.id, { st: e.target.value === "auto" ? null : e.target.value })} className="absolute inset-0 cursor-pointer opacity-0">
         <option value="" disabled>Đổi tình trạng</option>
-        {["cay", "xong", "ban", "dung", "bo"].map((k) => <option key={k} value={k}>{STATUS[k].l}</option>)}
+        {["cay", "xong", "ban", "dung"].map((k) => <option key={k} value={k}>{STATUS[k].l}</option>)}
         <option value="auto">Tự động theo máy</option>
       </select>
     </label>
@@ -258,7 +299,7 @@ function Progress({ x, wide }) {
     </div>
   );
 }
-const parseRev = (os) => os.reduce((a, x) => { if (!x.rev || x.st === "bo") return a; if (isUsd(x.rev)) a.usd += parseFloat(String(x.rev).replace(",", ".")) || 0; else a.vnd += parseInt(x.rev.replace(/\D/g, "")) || 0; return a; }, { vnd: 0, usd: 0 });
+const parseRev = (os) => os.reduce((a, x) => { if (!x.rev || x.xoa) return a; if (isUsd(x.rev)) a.usd += parseFloat(String(x.rev).replace(",", ".")) || 0; else a.vnd += parseInt(x.rev.replace(/\D/g, "")) || 0; return a; }, { vnd: 0, usd: 0 });
 function GroupHead({ d, os, open, onToggle, bulk = [], onBulk }) {
   const [ok, setOk] = useState(false);
   const priced = os.filter((x) => x.rev).length;
@@ -311,7 +352,7 @@ function Note({ x, update, wide }) {
 export function Chip({ p, children, className, ...rest }) {
   return <span className={cn("inline-flex h-7 items-center rounded-lg px-2.5 text-[12.5px] font-semibold whitespace-nowrap tnum", className)} style={p ? { background: p.bg, color: p.fg } : undefined} {...rest}>{children}</span>;
 }
-function PricePicker({ value, prices, onPick, cur = "both", src }) {
+function PricePicker({ value, prices, onPick, cur = "both", src, none }) {
   const [open, setOpen] = useState(false);
   const [other, setOther] = useState("");
   const p = prices.find((x) => x.v === value);
@@ -334,6 +375,7 @@ function PricePicker({ value, prices, onPick, cur = "both", src }) {
       <Popover.Trigger asChild>
         <button type="button" aria-label={`Doanh thu: ${value || "chưa nhập"}. Bấm để chọn`} className="cursor-pointer rounded-lg transition-transform hover:-translate-y-px focus-visible:outline-2">
           {value ? <Chip p={p || { bg: "#E9ECF0", fg: "#3F4A5A" }}>{value}</Chip>
+            : none ? <Chip className="border border-dashed border-line bg-white text-ink-3">Không cần</Chip>
             : <Chip className="border border-dashed border-warn/60 bg-warn-soft text-warn-ink">Chọn giá</Chip>}
         </button>
       </Popover.Trigger>

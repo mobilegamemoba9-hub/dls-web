@@ -25,7 +25,7 @@ function useSums(orders, rate) {
       r[KEY[x.kenh] || "vn"] += (t.vnd + t.usd * rate) / 1e6;
       r.usd += t.usd; r.n++;
     };
-    for (const x of orders) if (x.rev && x.st !== "bo") { add(m, x.day.slice(0, 7), x); add(d, x.day, x); }
+    for (const x of orders) if (x.rev && !x.xoa) { add(m, x.day.slice(0, 7), x); add(d, x.day, x); }
     return { m, d };
   }, [orders, rate]);
 }
@@ -51,7 +51,7 @@ export default function DoanhThu({ rate, setRate, prices, setPrices, orders = []
   const last = mData[iCur], prev = mData[iCur - 1];
   const sumAll = mData.reduce((a, r) => a + total(r), 0);
   const sumSeries = (k) => data0.reduce((a, r) => a + r[k], 0);
-  const chuaGia = orders.filter((x) => !x.rev && x.st !== "bo").length;
+  const chuaGia = orders.filter((x) => !x.rev && !x.xoa && x.st !== "ban").length;
 
   const commitRate = () => { const n = parseInt(rateTxt.replace(/\D/g, "")); if (n > 1000) { if (n !== rate) setRate(n); setRateTxt(fmt(n)); } else setRateTxt(fmt(rate)); };
 
@@ -238,9 +238,9 @@ function DebtCard({ d, rate, orders, cn, onSave }) {
   const from = cn.tu || addDay(today, -6);
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
-  const inKy = orders.filter((x) => x.st !== "bo" && x.kenh === d.kenh && x.src !== "Tay" && x.day >= from && x.day <= today);
+  const inKy = orders.filter((x) => !x.xoa && x.kenh === d.kenh && x.src !== "Tay" && x.day >= from && x.day <= today);
   const priced = inKy.filter((x) => x.rev).map((x) => { const t = tien(x.rev); return [x.name, d.cur === "usd" ? t.usd + t.vnd / rate : t.vnd + t.usd * rate]; });
-  const miss = inKy.length - priced.length;
+  const miss = inKy.filter((x) => !x.rev && x.st !== "ban").length;
   const total = priced.reduce((a, [, v]) => a + v, 0);
   const hist = Object.entries(cn.ls || {}).map(([id, h]) => ({ id, ...h })).sort((a, b) => (a.den < b.den ? 1 : -1));
   const text = [
@@ -309,9 +309,9 @@ function DebtCard({ d, rate, orders, cn, onSave }) {
 function DayCard({ orders, rate }) {
   const [day, setDay] = useState(ymd(Date.now()));
   const rows = [{ n: "Nextgen DLS", kenh: "NGL", cur: "usd" }, { n: "Ismoilov", kenh: "IML", cur: "vnd" }, { n: "Khách Việt Nam", kenh: "Khách VN", cur: "vnd" }].map((p) => {
-    const os = orders.filter((x) => x.st !== "bo" && x.day === day && x.kenh === p.kenh);
+    const os = orders.filter((x) => !x.xoa && x.day === day && x.kenh === p.kenh);
     const s = os.reduce((a, x) => { const t = tien(x.rev); a.usd += t.usd; a.vnd += t.vnd; return a; }, { usd: 0, vnd: 0 });
-    const miss = os.filter((x) => !x.rev).length;
+    const miss = os.filter((x) => !x.rev && x.st !== "ban").length;
     const v = p.cur === "usd" ? `${usdTxt(s.usd)}$` + (s.vnd ? ` + ${fmt(s.vnd)}đ` : "") : `${fmt(s.vnd)}đ` + (s.usd ? ` + ${usdTxt(s.usd)}$` : "");
     const vnd = p.cur === "usd" && s.usd ? `${fmt(Math.round(s.usd * rate + s.vnd))}đ` : "";
     const names = os.map((x) => x.name.split(".")[0]);

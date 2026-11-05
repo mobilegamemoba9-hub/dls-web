@@ -137,7 +137,10 @@ export function buildOrders(data, live) {
       o.g = t.g; o.tg = t.tg || o.tg; o.m = m.code; o.tab = t.i;
       o.autoSt = stFromTab(t);
     } else if (o.kq) { o.g = o.kq.g ?? o.g; o.tg = o.kq.tg || o.tg; o.autoSt = o.kq.st || null; }
-    o.st = s.st || o.autoSt || o.st || "cay";
+    o.xoa = !!s.xoa || s.st === "bo";
+    o.stBo = s.st === "bo";                             // đã xóa (đơn test...) -> ẩn, không tính tiền; "bo" = bản cũ của nút này
+    o.han = s.han || "";                                          // ngày đến hạn chọn tay (đơn 0đ: khách gửi lại / tặng)
+    o.st = (s.st && s.st !== "bo" ? s.st : null) || o.autoSt || o.st || "cay";
     o.kenh = kenhOf(o.name, o.src);
     out.push(o);
   };
