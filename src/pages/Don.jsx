@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect, useMemo, useCallback, memo } from "react";
 import * as Popover from "@radix-ui/react-popover";
-import { Plus, Search, ArrowDownToLine, X, ChevronDown, Upload, FileUp, Check, CheckCheck, Trash2, RotateCcw } from "lucide-react";
+import { Plus, Search, ArrowDownToLine, X, ChevronDown, Upload, FileUp, Check, CheckCheck, Trash2, RotateCcw, Link2, ExternalLink } from "lucide-react";
 import { Badge, CopyBtn, Button, Segmented, GoldBar, Coin, cn } from "../ui.jsx";
 import { isUsd, fmt, curOf, tinhHan } from "../data.js";
 import { ymd, KT_TEXT, KT_NGAN } from "../store.js";
 import { docSheet, keHoachNhap } from "../nhap.js";
+import { readWeb } from "../firebase.js";
 
 const SRC_TONE = { NGL: "bg-[oklch(0.95_0.03_272)] text-s-ngl", IML: "bg-[oklch(0.95_0.035_192)] text-[oklch(0.45_0.09_192)]", "Khách VN": "bg-gold-soft text-gold-ink", Tay: "bg-off-soft text-ink-2" };
 const STATUS = {
@@ -92,6 +93,7 @@ export default function Don({ orders: raw, prices, onSave, ready, reporting }) {
           <p className="mt-1 text-[13.5px] text-ink-2 tnum">{fmt(orders.length - C.xoa)} đơn · <span className="text-run-ink font-medium">{fmt(C.cay)} đang cày</span> · <span className="text-ok-ink font-medium">{fmt(C.xong)} xong</span> · <span className="text-err-ink font-medium">{fmt(C.ban)} acc bị khóa</span></p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <LinkDoiTac />
           {ready && <ImportOld orders={raw} onSave={onSave} again={coCu} />}
           <AddOrder onAdd={add} />
         </div>
@@ -498,6 +500,54 @@ function ImportOld({ orders, onSave, again }) {
             </div>
           )}
           {msg && <p role="status" className="mt-2 text-[13px] font-medium text-ink-2">{msg}</p>}
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
+  );
+}
+
+// (lát 6) Link tra tiến độ cho đối tác: máy nhà (web_tra.py) ghi /web/tra = {NGL: khóa, IML: khóa}. Chỉ đọc khi bấm mở (vài trăm byte).
+const TRA_URL = "https://mobilegamemoba9-hub.github.io/dls-web/tra/#";
+function LinkDoiTac() {
+  const [open, setOpen] = useState(false);
+  const [d, setD] = useState(undefined);
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    if (!open || d) return;
+    let ok = true;
+    readWeb("tra").then((v) => { if (ok) { setD(v || null); setErr(""); } }, (e) => { if (ok) setErr((e && e.code) || "lỗi mạng"); });
+    return () => { ok = false; };
+  }, [open, d]);
+  const hang = (p, ten) => {
+    const k = d && typeof d[p] === "string" ? d[p] : "";
+    const url = k ? TRA_URL + k : "";
+    return (
+      <div key={p} className="rounded-xl border border-line bg-white p-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[13px] font-semibold">{ten} <span className="font-normal text-ink-3">({p})</span></span>
+          {url && <span className="flex items-center">
+            <CopyBtn text={url} className="size-7" />
+            <a href={url} target="_blank" rel="noreferrer" title="Mở thử" aria-label={`Mở thử link ${p}`} className="inline-grid size-7 place-items-center rounded-lg text-ink-3 hover:bg-wash hover:text-ink"><ExternalLink className="size-4" /></a>
+          </span>}
+        </div>
+        <div className="mt-1 break-all font-mono text-[11.5px] leading-snug text-ink-2">{url || "—"}</div>
+      </div>
+    );
+  };
+  return (
+    <Popover.Root open={open} onOpenChange={(v) => { setOpen(v); if (!v) setD(undefined); }}>
+      <Popover.Trigger asChild><Button><Link2 />Link tra đối tác</Button></Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content sideOffset={8} align="end" collisionPadding={12} className="glass pop-in z-50 max-h-[var(--radix-popover-content-available-height)] w-[min(380px,calc(100vw-24px))] overflow-y-auto rounded-2xl border border-white/80 p-4 shadow-[var(--shadow-float)]">
+          <div className="flex items-center justify-between"><span className="text-[14px] font-semibold">Link tra tiến độ cho đối tác</span><Popover.Close className="grid size-7 cursor-pointer place-items-center rounded-lg text-ink-3 hover:bg-white" aria-label="Đóng"><X className="size-4" /></Popover.Close></div>
+          <p className="mt-0.5 text-[12.5px] text-ink-2">Mỗi đối tác 1 link bí mật: mở ra thấy mọi đơn đang làm + xong/dừng 7 ngày (không có code, acc, máy, tab). Gửi 1 lần qua Messenger.</p>
+          <div className="mt-3 space-y-2">
+            {err ? <p className="text-[12.5px] text-err-ink">Chưa đọc được ({err}). Đóng rồi mở lại.</p>
+              : d === undefined ? <p className="text-[12.5px] text-ink-3">Đang tải…</p>
+              : d === null ? <p className="text-[12.5px] text-warn-ink">Chưa có link: máy nhà chưa cài gói WEB_TRA (hoặc chưa chạy 10 phút).</p>
+              : <>{hang("NGL", "Nextgen DLS")}{hang("IML", "Ismoilov")}</>}
+          </div>
+          <p className="mt-3 text-[12px] leading-snug text-ink-3">Link bị lộ → trên máy nhà gõ <span className="font-mono text-ink-2">py web_tra.py doi NGL</span> (hoặc IML): link cũ ngừng hiện dữ liệu trong ≤ 10 phút, gửi link mới cho đối tác.</p>
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
