@@ -2,98 +2,51 @@
 // Link: https://mobilegamemoba9-hub.github.io/dls-web/tra/#<khóa 24 ký tự>  (khóa nằm sau dấu # -> không gửi lên máy chủ GitHub)
 // Đọc DUY NHẤT 1 chỗ: GET <databaseURL>/pub/dt/<khóa>.json (luật Firebase: đọc từng khóa, không liệt kê được /pub/dt).
 // Máy nhà (web_tra.py) ghi dữ liệu 10 phút/lần. Trang tự làm mới 5 phút khi đang mở; nút Làm mới khóa 60 giây; cache 60 giây.
+// (6c) 4 ngôn ngữ EN / VI / BN / UZ; mỗi đơn 1 dòng gọn bấm để mở; 3 khu Đang làm / Hoàn thành / Đã dừng (2 khu sau thu gọn);
+//      NGL xếp số nhỏ lên trên, IML xếp ngày cũ rồi số nhỏ; nút chép tiến độ 1 đơn; nhãn "Mới" cho đơn vừa xong/dừng từ lần mở trước.
 import { StrictMode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { RefreshCw, Search, X } from "lucide-react";
+import { RefreshCw, Search, X, ChevronDown, Copy, Check } from "lucide-react";
 import "../index.css";
-import { cn, Badge, GoldBar, Coin, Gem } from "../ui.jsx";
+import { cn, GoldBar, Coin, Gem } from "../ui.jsx";
 import { firebaseConfig } from "../firebase-config.js";
+import { T, NUT, TEN_NN } from "./lang.js";
 
 const KHOA_RE = /^[a-z2-9]{20,40}$/;
 const AUTO_MS = 5 * 60 * 1000;
 const CHAN_MS = 60 * 1000;
 const CU_MS = 30 * 60 * 1000;             // dữ liệu cũ hơn 30 phút -> báo "có thể chậm"
 const MOCK = typeof window !== "undefined" ? window.__TRA_MOCK__ : undefined;
-const DOI_TAC = { NGL: "Nextgen DLS", IML: "Ismoilov" };
-
-const T = {
-  en: {
-    title: "Order progress", sub: "DLS farming service", partner: (p) => `${DOI_TAC[p] || p} · ${p} orders`,
-    refresh: "Refresh", wait: (s) => `Refresh (${s}s)`, updated: "Updated", ago: (m) => (m < 1 ? "just now" : m < 60 ? `${m} min ago` : `${Math.floor(m / 60)} h ${m % 60} min ago`),
-    stale: "Data may be delayed. Our system will update it automatically.",
-    search: "Search order, e.g. NGL205", clear: "Clear search",
-    f: { all: "All", run: "In progress", done: "Completed", stop: "Stopped" },
-    tiles: { run: "In progress", done: "Completed (7 days)", stop: "Stopped (7 days)", gold: "Gold farmed (in progress)" },
-    sec: { run: "In progress", end: "Finished in the last 7 days" },
-    s: { noi: "Linking code", cay: "Farming", cho: "Daily limit reached", tam: "Paused", gd: "Temporarily interrupted", xong: "Completed", dung: "Stopped", ket: "Ended" },
-    r: { kick: "The account was signed in on another device (kicked).", cancel: "Gold or gems were spent while we were farming.", khoa: "Please contact us.", khac: "Please contact us." },
-    noi: "We received your code and are linking the account. This usually takes 1–3 minutes.",
-    cs: "Linked. Waiting for the first progress update.",
-    cho: (t) => `The game allows 100 matches per day. Farming resumes at ${t}.`,
-    tam: "Paused for a moment. Farming will resume soon.",
-    gd: "We're fixing a small issue. The numbers below may be a little old.",
-    received: "Received", eta: "Est. finish", finished: "Finished",
-    etaTxt: (d) => (d === 0 ? "Today" : d === 1 ? "Tomorrow" : `~${d} days`),
-    day: (a, b) => `Day ${a} of ${b}`, gold: "gold", gems: "gems",
-    matches: "Matches today", full: "Full 100 games",
-    none: "No orders match.", empty: "No orders right now.",
-    noKey: "Open the tracking link you received from us.", notFound: "This link was not found or has expired. Please ask us for a new link.",
-    net: "Couldn't load the data. Check your connection and try again.", retry: "Try again",
-    foot: (z) => `Updated about every 10 minutes. Times are shown in your local time (${z}). Questions? Message us on Messenger.`,
-    lang: "Language",
-  },
-  vi: {
-    title: "Tiến độ đơn", sub: "Dịch vụ cày DLS", partner: (p) => `${DOI_TAC[p] || p} · đơn ${p}`,
-    refresh: "Làm mới", wait: (s) => `Làm mới (${s}s)`, updated: "Cập nhật", ago: (m) => (m < 1 ? "vừa xong" : m < 60 ? `${m} phút trước` : `${Math.floor(m / 60)} giờ ${m % 60} phút trước`),
-    stale: "Số liệu có thể đang chậm. Hệ thống sẽ tự cập nhật lại.",
-    search: "Tìm đơn, vd NGL205", clear: "Xóa ô tìm",
-    f: { all: "Tất cả", run: "Đang làm", done: "Hoàn thành", stop: "Đã dừng" },
-    tiles: { run: "Đang làm", done: "Hoàn thành (7 ngày)", stop: "Đã dừng (7 ngày)", gold: "Vàng đã cày (đơn đang làm)" },
-    sec: { run: "Đang làm", end: "Kết thúc trong 7 ngày qua" },
-    s: { noi: "Đang nối code", cay: "Đang cày", cho: "Đủ 100 trận, chờ 7h", tam: "Tạm dừng", gd: "Tạm gián đoạn", xong: "Hoàn thành", dung: "Đã dừng", ket: "Đã kết thúc" },
-    r: { kick: "Acc bị đăng nhập ở máy khác (KICK).", cancel: "Vàng hoặc KC bị tiêu trong lúc cày.", khoa: "Vui lòng liên hệ với chúng tôi.", khac: "Vui lòng liên hệ với chúng tôi." },
-    noi: "Đã nhận code, đang nối acc. Thường mất 1–3 phút.",
-    cs: "Đã nối xong. Đang chờ số liệu đầu tiên.",
-    cho: (t) => `Game cho chơi 100 trận mỗi ngày. Cày tiếp lúc ${t}.`,
-    tam: "Tạm dừng một chút, sẽ cày tiếp sớm.",
-    gd: "Đang xử lý một lỗi nhỏ. Số bên dưới có thể hơi cũ.",
-    received: "Nhận", eta: "Dự kiến xong", finished: "Kết thúc",
-    etaTxt: (d) => (d === 0 ? "Hôm nay" : d === 1 ? "Ngày mai" : `~${d} ngày`),
-    day: (a, b) => `Ngày ${a}/${b}`, gold: "vàng", gems: "KC",
-    matches: "Trận hôm nay", full: "Full 100 trận",
-    none: "Không có đơn nào khớp.", empty: "Hiện chưa có đơn nào.",
-    noKey: "Hãy mở đúng link tra cứu bạn được gửi.", notFound: "Không tìm thấy link này hoặc link đã hết hạn. Hãy hỏi chúng tôi link mới.",
-    net: "Không tải được dữ liệu. Kiểm tra mạng rồi thử lại.", retry: "Thử lại",
-    foot: () => "Cập nhật khoảng 10 phút/lần. Giờ hiển thị theo giờ Việt Nam. Thắc mắc nhắn chúng tôi qua Messenger.",
-    lang: "Ngôn ngữ",
-  },
-};
+const NGON_NGU = ["en", "vi", "bn", "uz"];
 
 const TONE_S = { noi: "wait", cay: "run", cho: "wait", tam: "warn", gd: "warn", xong: "ok", dung: "err", ket: "off" };
+const DOT = { wait: "bg-wait", run: "bg-run", warn: "bg-warn", ok: "bg-ok", err: "bg-err", off: "bg-off" };
+const CHU = { wait: "text-wait-ink", run: "text-run-ink", warn: "text-warn-ink", ok: "text-ok-ink", err: "text-err-ink", off: "text-ink-3" };
 const NHOM = (s) => (s === "xong" || s === "ket" ? "done" : s === "dung" ? "stop" : "run");
 
 const lsGet = (k) => { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* chế độ riêng tư */ } };
 const khoaTuHash = () => { const h = decodeURIComponent((location.hash || "").replace(/^#\/?/, "")).trim().toLowerCase(); return KHOA_RE.test(h) ? h : ""; };
-const so = (n) => { const m = /(\d+)/.exec(String(n || "")); return m ? +m[1] : 1e9; };
+const so = (n) => { const m = /(?:NGL|IML)(\d+)/i.exec(String(n || "")) || /(\d+)/.exec(String(n || "")); return m ? +m[1] : 1e9; };
 
 function useFmt(lang) {
   return useMemo(() => {
-    const loc = lang === "vi" ? "vi-VN" : "en-US";
+    const loc = lang === "vi" ? "vi-VN" : "en-US";              // UZ: tự đổi dấu phẩy -> khoảng trắng (nhiều trình duyệt thiếu dữ liệu tiếng Uzbek)
     const tz = lang === "vi" ? { timeZone: "Asia/Ho_Chi_Minh" } : {};
-    const num = new Intl.NumberFormat(loc, { maximumFractionDigits: 0 });
-    const pc = new Intl.NumberFormat(loc, { maximumFractionDigits: 0 });
-    const d1 = new Intl.NumberFormat(loc, { maximumFractionDigits: 1 });
+    let num, d1;
+    try { num = new Intl.NumberFormat(loc, { maximumFractionDigits: 0 }); d1 = new Intl.NumberFormat(loc, { maximumFractionDigits: 1 }); }
+    catch { num = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }); d1 = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 }); }
     const dtf = new Intl.DateTimeFormat("en-US", { ...tz, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
     const dtv = new Intl.DateTimeFormat("en-US", { ...tz, day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
-    const dt = { format: (d) => {                                   // EN: "Nov 5, 21:10" · VI: "05/11 23:10" (tự ghép, không phụ thuộc kiểu trình duyệt)
-      const o = Object.fromEntries((lang === "vi" ? dtv : dtf).formatToParts(d).map((x) => [x.type, x.value]));
-      return lang === "vi" ? `${o.day}/${o.month} ${o.hour}:${o.minute}` : `${o.month} ${o.day}, ${o.hour}:${o.minute}`;
-    } };
-    const hm = new Intl.DateTimeFormat(loc, { ...tz, hour: "2-digit", minute: "2-digit", hour12: false });
+    const hmf = new Intl.DateTimeFormat("en-US", { ...tz, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+    const parts = (f, d) => Object.fromEntries(f.formatToParts(d).map((x) => [x.type, x.value]));
+    // EN: "Nov 5, 21:10" · VI/BN/UZ: "05/11 21:10" (tự ghép, không phụ thuộc kiểu trình duyệt)
+    const dt = (s) => { const o = parts(lang === "en" ? dtf : dtv, new Date(s * 1000)); return lang === "en" ? `${o.month} ${o.day}, ${o.hour}:${o.minute}` : `${o.day}/${o.month} ${o.hour}:${o.minute}`; };
+    const hm = (ms) => { const o = parts(hmf, new Date(ms)); return `${o.hour}:${o.minute}`; };
     let zone = "";
     try { zone = new Intl.DateTimeFormat("en-US", { timeZoneName: "short" }).formatToParts(new Date()).find((x) => x.type === "timeZoneName")?.value || ""; } catch { zone = ""; }
-    return { n: (v) => num.format(Math.round(+v || 0)), pc: (v) => pc.format(+v || 0) + "%", d1: (v) => d1.format(+v || 0), dt: (s) => dt.format(new Date(s * 1000)), hm: (ms) => hm.format(new Date(ms)), zone };
+    const uz = (x) => (lang === "uz" ? x.replace(/,/g, "\u00a0").replace(/\./g, ",") : x);
+    return { n: (v) => uz(num.format(Math.round(+v || 0))), pc: (v) => uz(num.format(Math.round(+v || 0))) + "%", d1: (v) => uz(d1.format(+v || 0)), dt, hm, zone };
   }, [lang]);
 }
 
@@ -112,6 +65,33 @@ async function taiDuLieu(k) {
   return res.json();
 }
 
+// giờ cày lại = 07:00 giờ VN = 00:00 UTC kế tiếp
+const ve7h = (now) => { const d = new Date(now); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1); };
+
+function ghiChu(x, t, f, now) {
+  if (x.s === "noi") return t.noi;
+  if (x.cs) return t.cs;
+  if (x.s === "cho") return t.cho(f.hm(ve7h(now)));
+  if (x.s === "tam") return t.tam;
+  if (x.s === "gd") return t.gd;
+  if (x.s === "dung") return t.r[x.r] || t.r.khac;
+  return "";
+}
+const full100 = (x) => x.s === "cho" || +x.mt >= 100;
+
+// 1 dòng chép gửi khách: "NGL269.30K.29/10(8179) M48 — Farming · 24,000/30,000 gold (80%) · Matches today 45/100 · Est. finish ~2 days"
+function textChep(x, t, f, now) {
+  const a = [`${x.ten || x.n}${!x.ten && x.a ? " " + x.a : ""} — ${t.s[x.s]}`];
+  if (x.tg > 0) a.push(`${f.n(x.g)}/${f.n(x.tg)} ${t.gold} (${f.pc(x.pc)})`);
+  else if (+x.td > 0) a.push(`${t.day(f.d1(Math.min(+x.nd || 0, +x.td)), f.d1(x.td))} (${f.pc(x.pc)})`);
+  if (x.tk > 0) a.push(`${f.n(x.k)}/${f.n(x.tk)} ${t.gems}`);
+  if (x.nhom === "run" && x.mt != null && x.s !== "noi") a.push(full100(x) ? t.full : `${t.matches} ${f.n(x.mt)}/100`);
+  if (x.nhom === "run" && x.e != null && x.s !== "noi") a.push(`${t.eta} ${t.etaTxt(+x.e)}`);
+  if (x.nhom !== "run" && x.tx > 0) a.push(`${t.finished} ${f.dt(x.tx)}`);
+  const g = x.s === "dung" ? ghiChu(x, t, f, now) : "";
+  return a.join(" · ") + (g ? ` — ${g}` : "");
+}
+
 function App() {
   const [k, setK] = useState(khoaTuHash);
   const cache0 = k ? lsGet("tra:" + k) : null;
@@ -121,12 +101,16 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [langPick, setLangPick] = useState(() => lsGet("tra:lang"));
-  const lang = langPick === "vi" || langPick === "en" ? langPick : data && (data.l === "vi" || data.l === "en") ? data.l : (navigator.language || "").toLowerCase().startsWith("vi") ? "vi" : "en";
+  const lang = NGON_NGU.includes(langPick) ? langPick : data && NGON_NGU.includes(data.l) ? data.l : (navigator.language || "").toLowerCase().startsWith("vi") ? "vi" : "en";
   const t = T[lang];
   const f = useFmt(lang);
   const [q, setQ] = useState("");
   const [loc, setLoc] = useState("all");
+  const [mo, setMo] = useState(() => ({ run: true, done: false, stop: false, ...(lsGet("tra:mo") || {}) }));
+  const [moDon, setMoDon] = useState(() => new Set());
+  const [moi, setMoi] = useState(() => new Set());
   const busyRef = useRef(false);
+  const seenRef = useRef(undefined);
 
   useEffect(() => { document.documentElement.lang = lang; document.title = t.title; }, [lang, t]);
   useEffect(() => { const on = () => { setK(khoaTuHash()); }; addEventListener("hashchange", on); return () => removeEventListener("hashchange", on); }, []);
@@ -159,20 +143,39 @@ function App() {
     return () => { clearInterval(tick); clearInterval(auto); document.removeEventListener("visibilitychange", vis); };
   }, [k, tai]);
 
-  const chon = (l) => { setLangPick(l); lsSet("tra:lang", l); };
-  const conLai = Math.min(60, Math.max(0, Math.ceil((at + CHAN_MS - now) / 1000)));
-
   const ds = useMemo(() => Object.entries((data && data.o) || {}).filter(([, x]) => x && typeof x === "object" && TONE_S[x.s])
     .map(([id, x]) => ({ id, ...x, g: +x.g || 0, tg: +x.tg || 0, k: +x.k || 0, tk: +x.tk || 0, nhom: NHOM(x.s) })), [data]);
+
+  // nhãn "Mới": đơn xong/dừng chưa có ở lần mở trước (lần mở đầu tiên: không đánh dấu gì)
+  useEffect(() => {
+    if (!k || !data) return;
+    const key = "tra:seen:" + k;
+    if (seenRef.current === undefined) seenRef.current = lsGet(key);
+    const prev = seenRef.current;
+    const ended = ds.filter((x) => x.nhom !== "run").map((x) => x.id);
+    if (Array.isArray(prev)) setMoi(new Set(ended.filter((id) => !prev.includes(id))));
+    lsSet(key, [...new Set([...(Array.isArray(prev) ? prev : []), ...ended])].slice(-600));
+  }, [k, data, ds]);
+
+  const chon = (l) => { setLangPick(l); lsSet("tra:lang", l); };
+  const doiMo = (g) => setMo((m) => { const v = { ...m, [g]: !m[g] }; lsSet("tra:mo", v); return v; });
+  const doiDon = (id) => setMoDon((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const conLai = Math.min(60, Math.max(0, Math.ceil((at + CHAN_MS - now) / 1000)));
+
+  const p = (data && data.p) || "";
+  const cmp = p === "IML"
+    ? (a, b) => (String(a.d || "") === String(b.d || "") ? so(a.n) - so(b.n) : String(a.d || "") < String(b.d || "") ? -1 : 1)     // IML: ngày cũ -> số nhỏ
+    : (a, b) => so(a.n) - so(b.n) || (String(a.d || "") < String(b.d || "") ? -1 : 1);                                                // NGL: số nhỏ lên trên
   const dem = useMemo(() => ({ run: ds.filter((x) => x.nhom === "run").length, done: ds.filter((x) => x.nhom === "done").length, stop: ds.filter((x) => x.nhom === "stop").length,
     gold: ds.filter((x) => x.nhom === "run").reduce((a, x) => a + x.g, 0) }), [ds]);
   const qq = q.trim().toLowerCase().replace(/\s+/g, "");
   const loc2 = ds.filter((x) => (loc === "all" || x.nhom === loc) && (!qq || String(x.n).toLowerCase().includes(qq) || String(x.ten || "").toLowerCase().replace(/\s+/g, "").includes(qq)));
-  const dang = loc2.filter((x) => x.nhom === "run").sort((a, b) => (a.d === b.d ? so(a.n) - so(b.n) : a.d < b.d ? -1 : 1));
-  const xong = loc2.filter((x) => x.nhom !== "run").sort((a, b) => (b.tx || 0) - (a.tx || 0));
+  const nhom = { run: loc2.filter((x) => x.nhom === "run").sort(cmp), done: loc2.filter((x) => x.nhom === "done").sort(cmp), stop: loc2.filter((x) => x.nhom === "stop").sort(cmp) };
+  const moThat = (g) => mo[g] || loc === g || !!qq;     // lọc đúng khu hoặc đang tìm -> tự mở
 
   const nodeT = data && data.t ? data.t * 1000 : 0;
   const cu = nodeT && now - nodeT > CU_MS;
+  const nut = NUT[p] || NUT[""];
 
   return (
     <div className="mx-auto w-full max-w-[1180px] px-4 pb-14 pt-[max(16px,env(safe-area-inset-top))] sm:px-6">
@@ -180,13 +183,13 @@ function App() {
         <div className="min-w-0">
           <p className="text-[12.5px] font-medium uppercase tracking-[0.08em] text-ink-3">{t.sub}</p>
           <h1 className="text-[26px] font-bold tracking-[-0.02em] sm:text-[30px]">{t.title}</h1>
-          {data && data.p && <p className="mt-0.5 text-[14px] font-medium text-ink-2">{t.partner(data.p)}</p>}
+          {p && <p className="mt-0.5 text-[14px] font-medium text-ink-2">{t.partner(p)}</p>}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div role="group" aria-label={t.lang} className="inline-flex rounded-xl border border-line bg-white p-0.5 shadow-[var(--shadow-card)]">
-            {["en", "vi"].map((l) => (
-              <button key={l} type="button" onClick={() => chon(l)} aria-pressed={lang === l}
-                className={cn("h-8 min-w-11 cursor-pointer rounded-[10px] px-3 text-[13px] font-semibold transition-colors", lang === l ? "bg-brand text-white" : "text-ink-2 hover:bg-wash")}>{l.toUpperCase()}</button>
+            {nut.map((l) => (
+              <button key={l} type="button" onClick={() => chon(l)} aria-pressed={lang === l} lang={l}
+                className={cn("h-8 min-w-11 cursor-pointer rounded-[10px] px-2.5 text-[13px] font-semibold transition-colors", lang === l ? "bg-brand text-white" : "text-ink-2 hover:bg-wash")}>{TEN_NN[l]}</button>
             ))}
           </div>
           {k && data !== null && (
@@ -203,30 +206,30 @@ function App() {
         : data === undefined && err ? <Thong t={t.net} nut={t.retry} onNut={() => tai(true)} tone="err" />
         : data === null ? <Thong t={err ? t.net : t.notFound} nut={err ? t.retry : null} onNut={() => tai(true)} tone={err ? "err" : "off"} />
         : (
-          <main className="space-y-5">
+          <main className="space-y-4">
             <p className="tnum text-[13px] text-ink-3">
               {t.updated}: {nodeT ? `${f.dt(nodeT / 1000)} · ${t.ago(Math.floor((now - nodeT) / 60000))}` : "—"}
               {err && <span className="ml-2 font-medium text-err-ink">· {t.net}</span>}
             </p>
             {cu && <div className="rounded-2xl border border-warn/30 bg-warn-soft px-4 py-3 text-[13.5px] text-warn-ink">{t.stale}</div>}
 
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
               <O nhan={t.tiles.run} so={f.n(dem.run)} tone="run" />
               <O nhan={t.tiles.done} so={f.n(dem.done)} tone="ok" />
               <O nhan={t.tiles.stop} so={f.n(dem.stop)} tone="err" />
               <O nhan={t.tiles.gold} so={<span className="inline-flex items-center gap-1.5">{f.n(dem.gold)}<Coin className="size-[0.85em]" /></span>} tone="gold" />
             </div>
 
-            <div className="flex flex-col gap-3 rounded-[var(--radius-card)] border border-line bg-white p-3 shadow-[var(--shadow-card)] sm:flex-row sm:items-center">
-              <div className="flex min-w-0 flex-wrap gap-1" role="group">
+            <div className="sticky top-0 z-10 -mx-4 flex flex-col gap-2 bg-canvas/90 px-4 py-2 backdrop-blur-sm sm:static sm:mx-0 sm:flex-row sm:items-center sm:rounded-[var(--radius-card)] sm:border sm:border-line sm:bg-white sm:p-3 sm:shadow-[var(--shadow-card)] sm:backdrop-blur-none">
+              <div className="flex min-w-0 gap-1 overflow-x-auto" role="group">
                 {["all", "run", "done", "stop"].map((x) => (
                   <button key={x} type="button" onClick={() => setLoc(x)} aria-pressed={loc === x}
-                    className={cn("h-8 cursor-pointer rounded-[10px] px-3 text-[13px] font-medium whitespace-nowrap transition-colors", loc === x ? "bg-ink text-white" : "text-ink-2 hover:bg-wash")}>
+                    className={cn("h-8 shrink-0 cursor-pointer rounded-[10px] px-3 text-[13px] font-medium whitespace-nowrap transition-colors", loc === x ? "bg-ink text-white" : "bg-white text-ink-2 hover:bg-wash sm:bg-transparent")}>
                     {t.f[x]}{x !== "all" && <span className="tnum ml-1.5 opacity-70">{f.n(dem[x])}</span>}
                   </button>
                 ))}
               </div>
-              <label className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-xl border border-line bg-white px-3 focus-within:border-brand focus-within:ring-3 focus-within:ring-brand/15 sm:max-w-[320px] sm:ml-auto">
+              <label className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-xl border border-line bg-white px-3 focus-within:border-brand focus-within:ring-3 focus-within:ring-brand/15 sm:ml-auto sm:max-w-[320px]">
                 <Search className="size-4 shrink-0 text-ink-3" />
                 <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.search} aria-label={t.search} className="h-full min-w-0 flex-1 bg-transparent text-[14px] text-ink focus:outline-none" />
                 {q && <button type="button" onClick={() => setQ("")} aria-label={t.clear} className="grid size-6 cursor-pointer place-items-center rounded-md text-ink-3 hover:bg-wash"><X className="size-3.5" /></button>}
@@ -234,13 +237,12 @@ function App() {
             </div>
 
             {!ds.length ? <Thong t={t.empty} tone="off" nho />
-              : !dang.length && !xong.length ? <Thong t={t.none} tone="off" nho />
-              : (
-                <>
-                  {dang.length > 0 && <Nhom ten={t.sec.run} n={dang.length} f={f}>{dang.map((x) => <The key={x.id} x={x} t={t} f={f} now={now} />)}</Nhom>}
-                  {xong.length > 0 && <Nhom ten={t.sec.end} n={xong.length} f={f}>{xong.map((x) => <The key={x.id} x={x} t={t} f={f} now={now} />)}</Nhom>}
-                </>
-              )}
+              : !loc2.length ? <Thong t={t.none} tone="off" nho />
+              : ["run", "done", "stop"].filter((g) => nhom[g].length).map((g) => (
+                <Nhom key={g} g={g} ten={t.sec[g]} n={nhom[g].length} moi={nhom[g].filter((x) => moi.has(x.id)).length} t={t} f={f} mo={moThat(g)} onDoi={() => doiMo(g)}>
+                  {nhom[g].map((x) => <Dong key={x.id} x={x} t={t} f={f} now={now} mo={moDon.has(x.id)} onDoi={() => doiDon(x.id)} moi={moi.has(x.id)} />)}
+                </Nhom>
+              ))}
             <p className="pt-2 text-center text-[12.5px] text-ink-3">{t.foot(f.zone)}</p>
           </main>
         )}
@@ -251,83 +253,94 @@ function App() {
 function O({ nhan, so: s, tone }) {
   const c = { run: "text-run-ink", ok: "text-ok-ink", err: "text-err-ink", gold: "text-gold-ink" }[tone];
   return (
-    <div className="min-w-0 rounded-[var(--radius-card)] border border-line bg-white px-4 py-3 shadow-[var(--shadow-card)]">
-      <div className="truncate text-[12.5px] font-medium text-ink-3">{nhan}</div>
-      <div className={cn("tnum mt-0.5 text-[24px] font-bold leading-tight", c)}>{s}</div>
+    <div className="min-w-0 rounded-2xl border border-line bg-white px-3.5 py-2.5 shadow-[var(--shadow-card)] sm:rounded-[var(--radius-card)] sm:px-4 sm:py-3">
+      <div className="truncate text-[12px] font-medium text-ink-3 sm:text-[12.5px]">{nhan}</div>
+      <div className={cn("tnum mt-0.5 text-[21px] font-bold leading-tight sm:text-[24px]", c)}>{s}</div>
     </div>
   );
 }
 
-function Nhom({ ten, n, f, children }) {
+function Nhom({ g, ten, n, moi, t, f, mo, onDoi, children }) {
+  const tone = { run: "run", done: "ok", stop: "err" }[g];
   return (
     <section>
-      <h2 className="mb-2 flex items-baseline gap-2 text-[15px] font-semibold text-ink">{ten}<span className="tnum text-[13px] font-medium text-ink-3">{f.n(n)}</span></h2>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">{children}</div>
+      <button type="button" onClick={onDoi} aria-expanded={mo}
+        className="mb-2 flex w-full cursor-pointer items-center gap-2 rounded-xl py-1 text-left text-[15px] font-semibold text-ink">
+        <span className={cn("size-2 rounded-full", DOT[tone])} />
+        {ten}<span className="tnum text-[13px] font-medium text-ink-3">{f.n(n)}</span>
+        {moi > 0 && <span className="rounded-full bg-brand px-1.5 py-px text-[11px] font-bold text-white">{f.n(moi)} {t.neu}</span>}
+        <span className="ml-auto inline-flex items-center gap-1 text-[12.5px] font-medium text-ink-3">{mo ? t.hide : t.show}<ChevronDown className={cn("size-4 transition-transform", mo && "rotate-180")} /></span>
+      </button>
+      {mo && <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">{children}</div>}
     </section>
   );
 }
 
-function The({ x, t, f, now }) {
+function Dong({ x, t, f, now, mo, onDoi, moi }) {
   const tone = TONE_S[x.s];
   const coVang = x.tg > 0 && x.s !== "noi" && !x.cs;
   const coNgay = !x.tg && +x.td > 0 && x.s !== "noi";
-  const coKC = x.tk > 0 && x.s !== "noi";
+  const coSo = coVang || coNgay || (x.tk > 0 && x.s !== "noi");
   const pct = Math.max(0, Math.min(100, +x.pc || 0));
-  const ve7h = (() => { const d = new Date(now); const u = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1); return f.hm(u); })();
-  let ghiChu = "";
-  if (x.s === "noi") ghiChu = t.noi;
-  else if (x.cs) ghiChu = t.cs;
-  else if (x.s === "cho") ghiChu = t.cho(ve7h);
-  else if (x.s === "tam") ghiChu = t.tam;
-  else if (x.s === "gd") ghiChu = t.gd;
-  else if (x.s === "dung") ghiChu = t.r[x.r] || t.r.khac;
-  const barTone = x.s === "xong" ? "ok" : x.s === "dung" ? "err" : "gold";
+  const barTone = x.s === "xong" ? "ok" : x.s === "dung" ? "err" : coNgay ? "run" : "gold";
+  const gc = ghiChu(x, t, f, now);
+  const ten = x.ten || x.n;
   return (
-    <article className="min-w-0 rounded-[var(--radius-card)] border border-line bg-white p-4 shadow-[var(--shadow-card)]">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <span className={cn("min-w-0 font-bold tracking-[-0.01em] text-ink", x.ten ? "[overflow-wrap:anywhere] text-[14.5px] leading-snug" : "truncate text-[16px]")}>{x.ten || x.n}</span>
-          {x.a && !x.ten && <span className="tnum rounded-md bg-wash px-1.5 py-0.5 text-[12px] font-semibold text-ink-2">{x.a}</span>}
+    <article className={cn("min-w-0 rounded-2xl border bg-white shadow-[var(--shadow-card)] transition-colors", mo ? "border-brand/40" : "border-line")}>
+      <button type="button" onClick={onDoi} aria-expanded={mo} className="block w-full cursor-pointer px-3.5 py-2.5 text-left">
+        <div className="flex items-center gap-2">
+          {moi && <span className="shrink-0 rounded-md bg-brand px-1.5 py-px text-[10.5px] font-bold uppercase text-white">{t.neu}</span>}
+          <span className={cn("min-w-0 flex-1 text-[14px] font-semibold leading-snug text-ink", mo ? "[overflow-wrap:anywhere]" : "truncate")} title={ten}>{ten}</span>
+          {x.a && !x.ten && <span className="tnum shrink-0 rounded-md bg-wash px-1.5 py-px text-[11.5px] font-semibold text-ink-2">{x.a}</span>}
+          {coSo && <span className="tnum shrink-0 text-[14px] font-bold text-ink">{f.pc(pct)}</span>}
+          <ChevronDown className={cn("size-4 shrink-0 text-ink-3 transition-transform", mo && "rotate-180")} />
         </div>
-        <Badge tone={tone} dot className="shrink-0">{t.s[x.s]}</Badge>
-      </div>
-
-      {coVang && (
-        <div className="mt-3">
-          <div className="flex items-baseline justify-between gap-2 text-[13.5px]">
-            <span className="tnum inline-flex min-w-0 flex-wrap items-center gap-x-1 text-ink-2">
+        {coSo && <GoldBar pct={pct} tone={barTone} className="mt-1.5 h-1.5" />}
+        <div className="tnum mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[12.5px]">
+          <span className={cn("inline-flex items-center gap-1 font-medium", CHU[tone])}><span className={cn("size-1.5 rounded-full", DOT[tone])} />{t.s[x.s]}</span>
+          {x.nhom === "run" && x.mt != null && x.s !== "noi" && (full100(x)
+            ? <span className="rounded-md bg-wait-soft px-1.5 font-semibold text-wait-ink">{t.full}</span>
+            : <span className="text-ink-3">{t.matches} <b className="font-semibold text-ink">{f.n(x.mt)}/100</b></span>)}
+          {x.nhom === "run" && x.e != null && x.s !== "noi" && <span className="text-ink-3">{t.eta} <b className="font-semibold text-ink">{t.etaTxt(+x.e)}</b></span>}
+          {x.nhom !== "run" && x.tx > 0 && <span className="text-ink-3">{t.finished} <b className="font-medium text-ink-2">{f.dt(x.tx)}</b></span>}
+        </div>
+      </button>
+      {mo && (
+        <div className="border-t border-line-2 px-3.5 pb-3 pt-2.5 text-[13px]">
+          {coVang && (
+            <div className="tnum flex flex-wrap items-center gap-x-1 text-ink-2">
               <span className="font-semibold text-ink">{f.n(x.g)}</span><span>/ {f.n(x.tg)}</span><Coin className="size-[1.05em]" /><span className="sr-only">{t.gold}</span>
-            </span>
-            <span className="tnum shrink-0 font-semibold text-ink">{f.pc(pct)}</span>
+            </div>
+          )}
+          {coNgay && <div className="tnum text-ink-2">{t.day(f.d1(Math.min(+x.nd || 0, +x.td)), f.d1(x.td))}</div>}
+          {x.tk > 0 && x.s !== "noi" && (
+            <div className="tnum mt-1 inline-flex items-center gap-1 text-ink-2">
+              <span className="font-semibold text-ink">{f.n(x.k)}</span><span>/ {f.n(x.tk)}</span><Gem className="size-[1.05em]" /><span className="sr-only">{t.gems}</span>
+            </div>
+          )}
+          {gc && <p className={cn("mt-1.5 leading-snug", x.s === "dung" ? "text-err-ink" : x.s === "gd" || x.s === "tam" ? "text-warn-ink" : "text-ink-2")}>{gc}</p>}
+          <div className="tnum mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12.5px]">
+            {x.t0 > 0 && <span><span className="text-ink-3">{t.received} </span><span className="font-medium text-ink-2">{f.dt(x.t0)}</span></span>}
+            <Chep text={textChep(x, t, f, now)} t={t} />
           </div>
-          <GoldBar pct={pct} tone={barTone} className="mt-1.5 h-2" />
         </div>
       )}
-      {coNgay && (
-        <div className="mt-3">
-          <div className="flex items-baseline justify-between gap-2 text-[13.5px]">
-            <span className="tnum text-ink-2">{t.day(f.d1(Math.min(+x.nd || 0, +x.td)), f.d1(x.td))}</span>
-            <span className="tnum shrink-0 font-semibold text-ink">{f.pc(pct)}</span>
-          </div>
-          <GoldBar pct={pct} tone={barTone === "gold" ? "run" : barTone} className="mt-1.5 h-2" />
-        </div>
-      )}
-      {coKC && (
-        <div className="tnum mt-2 inline-flex items-center gap-1 text-[13.5px] text-ink-2">
-          <span className="font-semibold text-ink">{f.n(x.k)}</span><span>/ {f.n(x.tk)}</span><Gem className="size-[1.05em]" /><span className="sr-only">{t.gems}</span>
-        </div>
-      )}
-      {ghiChu && <p className={cn("mt-2.5 text-[13px] leading-snug", x.s === "dung" ? "text-err-ink" : x.s === "gd" || x.s === "tam" ? "text-warn-ink" : "text-ink-2")}>{ghiChu}</p>}
-
-      <dl className="tnum mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-line-2 pt-2.5 text-[12.5px]">
-        {x.t0 > 0 && <div className="flex gap-1"><dt className="text-ink-3">{t.received}</dt><dd className="font-medium text-ink-2">{f.dt(x.t0)}</dd></div>}
-        {x.nhom === "run" && x.mt != null && x.s !== "noi" && (x.s === "cho" || +x.mt >= 100
-          ? <div className="flex gap-1"><dd className="rounded-md bg-wait-soft px-1.5 font-semibold text-wait-ink">{t.full}</dd></div>
-          : <div className="flex gap-1"><dt className="text-ink-3">{t.matches}</dt><dd className="font-medium text-ink">{f.n(x.mt)}/100</dd></div>)}
-        {x.nhom === "run" && x.e != null && x.s !== "noi" && <div className="flex gap-1"><dt className="text-ink-3">{t.eta}</dt><dd className="font-medium text-ink">{t.etaTxt(+x.e)}</dd></div>}
-        {x.nhom !== "run" && x.tx > 0 && <div className="flex gap-1"><dt className="text-ink-3">{t.finished}</dt><dd className="font-medium text-ink-2">{f.dt(x.tx)}</dd></div>}
-      </dl>
     </article>
+  );
+}
+
+function Chep({ text, t }) {
+  const [ok, setOk] = useState(false);
+  const id = useRef();
+  const go = () => {
+    const xong = () => { setOk(true); clearTimeout(id.current); id.current = setTimeout(() => setOk(false), 1600); };
+    try { navigator.clipboard.writeText(text).then(xong, xong); } catch { xong(); }
+  };
+  return (
+    <button type="button" onClick={go} data-chep={text}
+      className={cn("ml-auto inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-line bg-white px-2.5 text-[12.5px] font-medium hover:bg-wash", ok ? "text-ok-ink" : "text-ink")}>
+      {ok ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}{ok ? t.copied : t.copy}
+    </button>
   );
 }
 
@@ -343,8 +356,8 @@ function Thong({ t, nut, onNut, tone = "off", nho }) {
 function DangTai() {
   return (
     <div className="space-y-3 pt-2" aria-busy="true">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{[0, 1, 2, 3].map((i) => <div key={i} className="h-[74px] animate-pulse rounded-[var(--radius-card)] bg-white/70" />)}</div>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">{[0, 1, 2].map((i) => <div key={i} className="h-[150px] animate-pulse rounded-[var(--radius-card)] bg-white/70" />)}</div>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{[0, 1, 2, 3].map((i) => <div key={i} className="h-[70px] animate-pulse rounded-2xl bg-white/70" />)}</div>
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">{[0, 1, 2, 3, 4].map((i) => <div key={i} className="h-[76px] animate-pulse rounded-2xl bg-white/70" />)}</div>
     </div>
   );
 }
