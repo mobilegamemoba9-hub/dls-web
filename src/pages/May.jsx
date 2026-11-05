@@ -1,8 +1,9 @@
-import { useState, useMemo } from "react";
-import { Pause, Cpu, HeartPulse, AlertTriangle } from "lucide-react";
+import { useState, useMemo, useEffect } from "react";
+import { Cpu, HeartPulse, AlertTriangle, SlidersHorizontal, Undo2, X } from "lucide-react";
 import { Badge, Dot, GoldBar, Gold, Gems, HudPill, Button, Segmented, cn } from "../ui.jsx";
 import { machines as mMau, tabsOf, fmt } from "../data.js";
 import { eta as etaOf, pctOf, CPU_CAO } from "../live.js";
+import { useLenh, LOAI, KQ, hoanTac } from "../lenh.js";
 
 const ST = {
   cay: { l: "Đang cày", tone: "run" },
@@ -33,6 +34,10 @@ export default function May({ code, live }) {
   const isBusy = (t) => ["warn", "cay", "cho", "dung"].includes(t.k) && (!real || t.pkg);
   const busy = list.filter(isBusy);                          // tab có gói: theo số tab, nhỏ nhất trên
   const idle = list.filter((t) => !isBusy(t));               // ô nhỏ bên dưới: cũng theo số tab
+  const nut = real && m.nut && (m.s === "ok" || m.s === "warn");   // (lát 5) máy có bản nút + còn gửi dữ liệu
+  const L = useLenh(real && m.s !== "none" ? m.m : null, nut);
+  const choTab = (i) => L.rows.filter((r) => r.k === "cho" && r.tab === i);
+  const card = (t) => <TabCard key={t.i} t={t} real={real} nut={nut} gui={L.gui} cho={choTab(t.i)} may={m.code} />;
 
   return (
     <div className="space-y-6">
@@ -82,7 +87,7 @@ export default function May({ code, live }) {
       {real && m.s !== "none" && m.cu && (
         <div className="flex items-start gap-3 rounded-2xl border border-warn/30 bg-warn-soft px-4 py-3 text-[14px] text-warn-ink">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-          <p><span className="font-semibold">Máy chạy web_tomtat bản cũ ({m.ban}).</span> Web chưa tự biết đơn đã xong khi tab bị xóa + clone. Cài gói <span className="font-semibold">WEB_TOMTAT_C</span>.</p>
+          <p><span className="font-semibold">Máy chạy web_tomtat bản cũ ({m.ban}).</span> {m.ban === "05/11c" ? "Chưa có nút điều khiển trên web." : "Web chưa tự biết đơn đã xong khi tab bị xóa + clone, chưa có nút điều khiển."} Cài gói <span className="font-semibold">NUT_WEB</span>.</p>
         </div>
       )}
       {m.s === "err" && (
@@ -113,24 +118,28 @@ export default function May({ code, live }) {
           { k: "off", l: "Tắt", dot: "off", c: cnt("off") },
         ].filter((it) => it.k === "all" || it.c > 0)} />}
 
+      {real && m.s !== "none" && (L.rows.length > 0 || L.loi) && <LenhPanel L={L} nut={nut} />}
+
       {busy.length > 0 && (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {busy.map((t) => <TabCard key={t.i} t={t} real={real} />)}
+          {busy.map(card)}
         </div>
       )}
       {idle.length > 0 && (
         <div>
           {busy.length > 0 && <h2 className="mb-2 text-[13px] font-semibold text-ink-3">Tab không có gói đang cày</h2>}
-          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{idle.map((t) => <TabCard key={t.i} t={t} real={real} />)}</div>
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{idle.map(card)}</div>
         </div>
       )}
       {!list.length && m.s !== "none" && <p className="rounded-2xl border border-dashed border-line px-4 py-8 text-center text-[14px] text-ink-3">Máy này không có tab nào ở trạng thái này.</p>}
-      <p className="text-[13px] text-ink-3">Nút Tạm dừng / Chạy tiếp làm ở lát 5, mỗi lần bấm phải xác nhận số tab.</p>
+      {real && m.s !== "none" && <p className="text-[13px] text-ink-3">{nut
+        ? "Nút dưới mỗi tab chỉ sửa sổ của máy (mở khóa tab lỗi, cờ DIRTY, ngày bù, đóng gói đã dừng). Máy hỏi lệnh mỗi 2 phút, tự kiểm lại điều kiện an toàn trước khi làm; lệnh quá 10 phút thì hết hạn. Không có nút bật/tắt bot, LD hay xóa tab."
+        : m.s === "err" ? "Máy mất tín hiệu: tạm ẩn nút điều khiển." : "Nút điều khiển: cài gói NUT_WEB trên máy này."}</p>}
     </div>
   );
 }
 
-function TabCard({ t, real }) {
+function TabCard({ t, real, nut, gui, cho = [], may }) {
   const has = real ? t.pkg && HAS.includes(t.k) : t.k !== "san" && t.k !== "off";
   const st = ST[t.k] || ST.off;
   const pct = !has ? 0 : real ? pctOf(t) : Math.min(100, (t.g / t.tg) * 100);
@@ -153,6 +162,7 @@ function TabCard({ t, real }) {
           <span className="ml-auto min-w-0 truncate text-[13px] text-ink-3" title={right}>{right}</span>
         </div>
         {real && (t.kq || t.health) && <p className={cn("mt-1.5 truncate text-[12.5px]", t.health ? "font-medium text-warn-ink" : "text-ink-3")} title={t.health || t.kq}>{t.health || `Kết quả: ${t.kq}`}</p>}
+        {nut && <NutTab t={t} gui={gui} cho={cho} may={may} />}
       </article>
     );
   }
@@ -162,7 +172,6 @@ function TabCard({ t, real }) {
       <div className="flex items-center gap-2">
         <span className="tnum text-[13px] font-semibold text-ink-3">Tab {t.i}</span>
         <Badge tone={st.tone} dot>{st.l}</Badge>
-        <Button size="iconSm" variant="ghost" className="ml-auto" disabled title="Tạm dừng · làm ở lát 5" aria-label={`Tạm dừng tab ${t.i} (lát 5)`}><Pause /></Button>
       </div>
       <div className="mt-1.5 truncate text-[14.5px] font-semibold" title={t.name}>{t.name}</div>
 
@@ -186,6 +195,134 @@ function TabCard({ t, real }) {
       </dl>
       {real && t.san > 0 && <p className="mt-2 text-[12.5px] text-ink-3">Acc chưa full sân · tính theo số dư (đã trừ phí sân {fmt(t.san)})</p>}
       {t.health && <p className="mt-3 flex items-center gap-1.5 rounded-lg bg-warn-soft px-2.5 py-1.5 text-[13px] font-medium text-warn-ink"><AlertTriangle className="size-3.5" />{t.health}</p>}
+      {nut && <NutTab t={t} gui={gui} cho={cho} may={may} />}
     </article>
+  );
+}
+
+/* ================= LÁT 5: NÚT ĐIỀU KHIỂN AN TOÀN =================
+   Mỗi tab chỉ hiện nút hợp với tình trạng tab (máy vẫn tự kiểm lại trước khi làm).
+   Xác nhận: Mở khóa / Đặt lại cờ / Đóng gói / Mở lại gói = bấm 2 lần. Gỡ cờ DIRTY + Ngày bù = gõ lại số tab. */
+const SO_TAB = new Set(["go_dirty", "ngay_bu"]);
+const NEW_RX = /^NEW\d+$/i;
+const NGAY = [-1, -0.5, 0.5, 1, 2];
+const soNgay = (x) => (x > 0 ? "+" : "−") + String(Math.abs(x)).replace(".", ",");
+
+function tacVu(t) {
+  const out = [];
+  if (t.kl && !t.pkg) out.push({ l: "mo_khoa" });
+  if (t.co === "D") out.push(NEW_RX.test(t.ten) ? { l: "go_dirty" } : { l: "go_dirty", khong: `Tên giả lập "${t.ten || "?"}" chưa phải NEW<số>: chưa xóa + clone lại thì máy sẽ từ chối.` });
+  if (t.k === "sach" && !t.co && !t.pkg) out.push({ l: "dat_dirty" });
+  if (t.pkg && t.p != null && t.td > 0 && ["cay", "cho", "dung", "warn"].includes(t.k) && !t.ps) out.push({ l: "ngay_bu" });
+  if (t.ps && t.p != null) out.push({ l: "dong_goi" });
+  return out;
+}
+
+function useHaiLan(ms = 5000) {
+  const [lan, setLan] = useState(false);
+  useEffect(() => { if (!lan) return; const id = setTimeout(() => setLan(false), ms); return () => clearTimeout(id); }, [lan, ms]);
+  return [lan, setLan];
+}
+
+function NutTab({ t, gui, cho, may }) {
+  const acts = tacVu(t);
+  const [mo, setMo] = useState(null);           // lệnh đang mở hộp xác nhận
+  const [so, setSo] = useState("");
+  const [ngay, setNgay] = useState(1);
+  const [lan, setLan] = useHaiLan();
+  const [tt, setTt] = useState("");             // thông báo sau khi gửi
+  const [dang, setDang] = useState(false);
+  if (!acts.length && !cho.length) return null;
+  const a = acts.find((x) => x.l === mo);
+  const canSo = a && SO_TAB.has(a.l);
+  const okSo = !canSo || so.trim() === String(t.i);
+  const send = async () => {
+    if (!a || dang) return;
+    if (!canSo && !lan) { setLan(true); return; }
+    setDang(true);
+    try {
+      await gui({ l: a.l, tab: t.i, p: ["ngay_bu", "dong_goi"].includes(a.l) ? t.p : undefined, so: a.l === "ngay_bu" ? ngay : undefined, ai: t.name || t.ten || "" });
+      setTt(`Đã gửi "${LOAI[a.l].l}" tab ${t.i} · máy làm trong ≤ 2 phút`); setMo(null); setSo(""); setLan(false);
+    } catch (e) { setTt("Chưa gửi được: " + ((e && (e.code || e.message)) || "lỗi mạng")); }
+    finally { setDang(false); }
+  };
+  return (
+    <div className="mt-2.5 border-t border-line-2 pt-2">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <SlidersHorizontal className="size-3.5 text-ink-3" aria-hidden="true" />
+        {acts.map((x) => (
+          <button key={x.l} type="button" onClick={() => { setMo(mo === x.l ? null : x.l); setSo(""); setLan(false); setTt(""); }} aria-expanded={mo === x.l}
+            className={cn("h-7 cursor-pointer rounded-lg border px-2.5 text-[12.5px] font-medium transition-colors", mo === x.l ? "border-shell bg-shell text-shell-ink" : "border-line bg-white text-ink-2 hover:bg-wash")}>
+            {LOAI[x.l].l}
+          </button>
+        ))}
+        {cho.map((r) => <Badge key={r.id} tone="run" dot className="text-[11.5px]">Chờ máy: {LOAI[r.l]?.l || r.l}</Badge>)}
+      </div>
+      {tt && !a && <p className="mt-1.5 text-[12.5px] text-ink-2" role="status">{tt}</p>}
+      {a && (
+        <div className="mt-2 rounded-xl border border-line bg-wash/60 p-3 text-[13px]">
+          <div className="flex items-start gap-2">
+            <p className="min-w-0 flex-1 text-ink-2"><span className="font-semibold text-ink">{LOAI[a.l].l} · {may} tab {t.i}.</span> {LOAI[a.l].g}{a.l === "ngay_bu" ? ` (gói ${t.td} ngày).` : "."}</p>
+            <button type="button" onClick={() => setMo(null)} aria-label="Đóng" className="grid size-6 shrink-0 cursor-pointer place-items-center rounded-md text-ink-3 hover:bg-white"><X className="size-3.5" /></button>
+          </div>
+          {a.khong && <p className="mt-1.5 font-medium text-warn-ink">{a.khong}</p>}
+          {a.l === "go_dirty" && !a.khong && <p className="mt-1.5 font-medium text-warn-ink">Chỉ gửi khi CHẮC tab đã xóa + clone lại. Bấm nhầm: dùng "Đặt lại cờ DIRTY".</p>}
+          {a.l === "ngay_bu" && (
+            <div className="mt-2 flex flex-wrap gap-1.5" role="radiogroup" aria-label="Số ngày bù">
+              {NGAY.map((x) => (
+                <button key={x} type="button" role="radio" aria-checked={ngay === x} onClick={() => setNgay(x)}
+                  className={cn("tnum h-8 min-w-12 cursor-pointer rounded-lg border px-2 text-[13px] font-semibold", ngay === x ? "border-shell bg-shell text-shell-ink" : "border-line bg-white text-ink hover:bg-wash")}>{soNgay(x)} ngày</button>
+              ))}
+            </div>
+          )}
+          <div className="mt-2.5 flex flex-wrap items-center gap-2">
+            {canSo && <input inputMode="numeric" value={so} onChange={(e) => setSo(e.target.value.replace(/[^0-9]/g, ""))} placeholder={`Gõ ${t.i} để xác nhận`} aria-label={`Gõ số tab ${t.i} để xác nhận`}
+              className="tnum h-9 w-40 rounded-lg border border-line bg-white px-2.5 text-[14px] outline-none focus:border-shell" />}
+            <Button size="sm" variant={lan ? "brand" : "default"} disabled={!okSo || dang || !!a.khong} onClick={send}>
+              {dang ? "Đang gửi…" : canSo ? "Gửi lệnh" : lan ? "Bấm lần nữa để gửi" : "Gửi lệnh"}
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LenhPanel({ L, nut }) {
+  return (
+    <section aria-label="Lệnh gửi máy" className="rounded-2xl border border-line bg-white/70 px-4 py-3">
+      <div className="flex items-center gap-2">
+        <h2 className="text-[14px] font-semibold">Lệnh gửi máy</h2>
+        {L.conCho && <span className="text-[12px] text-ink-3">· tự xem lại mỗi 30 giây</span>}
+        <Button size="sm" variant="ghost" className="ml-auto" onClick={L.docKq}>Xem lại</Button>
+      </div>
+      {L.loi && <p className="mt-1 text-[12.5px] text-err-ink">{L.loi}</p>}
+      <ul className="mt-1 divide-y divide-line-2">
+        {L.rows.map((r) => <LenhRow key={r.id} r={r} gui={L.gui} nut={nut} />)}
+      </ul>
+    </section>
+  );
+}
+
+function LenhRow({ r, gui, nut }) {
+  const ht = hoanTac(r);
+  const [lan, setLan] = useHaiLan();
+  const [xong, setXong] = useState("");
+  const k = KQ[r.k] || KQ.loi;
+  const gio = r.t ? new Date(r.t).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" }) : "";
+  const undo = async () => {
+    if (!lan) { setLan(true); return; }
+    try { await gui(ht); setXong("Đã gửi hoàn tác"); } catch (e) { setXong("Chưa gửi được: " + ((e && (e.code || e.message)) || "lỗi mạng")); }
+    setLan(false);
+  };
+  return (
+    <li className="flex flex-wrap items-start gap-x-3 gap-y-1 py-2 text-[13px]">
+      <Badge tone={k.tone} dot className="text-[11.5px]">{k.l}</Badge>
+      <span className="font-semibold">{LOAI[r.l]?.l || r.l} · tab {r.tab}{r.l === "ngay_bu" && r.so != null ? ` (${soNgay(+r.so)})` : ""}</span>
+      <span className="tnum text-ink-3">{gio}</span>
+      {nut && ht && !xong && <Button size="sm" variant={lan ? "brand" : "ghost"} className="ml-auto h-7" onClick={undo}><Undo2 />{lan ? "Bấm lần nữa" : "Hoàn tác"}</Button>}
+      {xong && <span className="ml-auto text-[12.5px] text-ink-2">{xong}</span>}
+      {r.m && <p className="w-full min-w-0 break-words text-ink-2">{r.m}</p>}
+    </li>
   );
 }

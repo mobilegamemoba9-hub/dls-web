@@ -1,9 +1,10 @@
 // Kết nối Firebase cho web: đăng nhập Google + đọc/ghi nhánh /web của Realtime Database.
 // Web CHỈ dùng /web. ĐỌC mọi nhánh /web; GHI chỉ chỗ Trọng sửa: /web/sua /web/gia /web/cfg /web/don_tay /web/don_cu /web/cong_no /web/ver.
+// (lát 5) + /web/lenh/m<máy>/<id> = 1 lệnh nút điều khiển (writeLenh, chỉ TẠO mới, không sửa/xóa).
 // KHÔNG ghi /web/may /web/don /web/don_idx /web/so /web/canh_bao /web/nha (máy gửi). Không đụng /assign /ack /result /tabs /beat của tool.
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut } from "firebase/auth";
-import { getDatabase, ref, get, update } from "firebase/database";
+import { getDatabase, ref, get, update, set, serverTimestamp } from "firebase/database";
 import { firebaseConfig, ALLOWED } from "./firebase-config.js";
 
 let app = null;
@@ -80,4 +81,18 @@ export async function writeWeb(paths) {
     return;
   }
   await update(ref(getDatabase(init()), "/web"), paths);
+}
+
+// (lát 5) Gửi 1 lệnh nút điều khiển: TẠO /web/lenh/m<máy>/<id>. Giờ tạo = giờ máy chủ Firebase (máy Xeon tính hạn 10 phút theo giờ này).
+// Máy Xeon tự kiểm điều kiện an toàn rồi mới chạy; web không sửa / xóa lệnh (máy xóa sau khi chạy), không ghi nhánh khác.
+const LENH_ID = /^L[0-9a-z]{6,30}$/;
+export async function writeLenh(m, id, d) {
+  if (!Number.isInteger(m) || m < 0 || !LENH_ID.test(id)) throw new Error("lệnh sai dạng");
+  const path = `lenh/m${m}/${id}`;
+  if (mock) {
+    const o = ((MOCK.lenh ??= {})[`m${m}`] ??= {});
+    o[id] = { ...structuredClone(d), tao: Date.now() };
+    return;
+  }
+  await set(ref(getDatabase(init()), "/web/" + path), { ...d, tao: serverTimestamp() });
 }

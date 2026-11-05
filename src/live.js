@@ -9,7 +9,9 @@ export const KNOWN = [2, 10, 35, 38, 40, 42, 48, 56, 101, 202];
 export const MAT_TIN_HIEU_S = 15 * 60;   // máy gửi ít nhất 10 phút/lần (+2 phút chu kỳ) -> quá 15 phút = mất tín hiệu
 export const CPU_CAO = 85;
 // (lát 4) bản web_tomtat mới nhất. Máy gửi 'b' từ 05/11c; bản cũ không có 'b' (05/11b có tên giả lập 'ten', 05/11 không có)
-export const BAN_MOI = "05/11c";
+export const BAN_MOI = "05/11d";
+// (lát 5) bản có nút điều khiển (web_lenh) - máy bản cũ hơn: web không hiện nút
+export const BAN_NUT = ["05/11d"];
 
 const num = (v) => (Number.isFinite(+v) ? +v : 0);
 
@@ -51,6 +53,10 @@ function tabOf(x, code, nowMs) {
     san: num(x.san),
     kq: x.kq || "",
     health,
+    p: Number.isFinite(+x.p) ? +x.p : null,   // (05/11d) id gói đang hiện -> nút gửi kèm để máy kiểm đúng gói
+    ps: x.ps === 1,                             // gói đang hiện là gói ĐÃ DỪNG (stopped)
+    co: x.co || "",                             // cờ tab: D = DIRTY (xong đơn chưa dọn), R = đang xóa + clone
+    kl: x.kl === 1,                             // tab NEW khóa vì tạo acc lỗi -> mở khóa được
   };
 }
 
@@ -89,7 +95,7 @@ export function buildLive(raw, nowMs = Date.now()) {
       hb: tuoi(age), age, t: num(v.t),
       cay: c("cay"), cho: c("cho"), dung: c("dung"), san: c("san"), sach: c("sach"), loi: loi.length, tat: c("off"),
       kho: v.kho || {}, g7: num(v.g7), k7: num(v.k7), moc: v.moc || "", tabs, real: true,
-      ban, cu: ban !== BAN_MOI, kt: !!v.kh,
+      ban, cu: ban !== BAN_MOI, kt: !!v.kh, nut: BAN_NUT.includes(ban),
     };
   });
   return { machines, real: machines.filter((x) => x.s !== "none"), at: nowMs };
