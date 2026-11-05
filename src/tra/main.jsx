@@ -35,6 +35,7 @@ const T = {
     received: "Received", eta: "Est. finish", finished: "Finished",
     etaTxt: (d) => (d === 0 ? "Today" : d === 1 ? "Tomorrow" : `~${d} days`),
     day: (a, b) => `Day ${a} of ${b}`, gold: "gold", gems: "gems",
+    matches: "Matches today", full: "Full 100 games",
     none: "No orders match.", empty: "No orders right now.",
     noKey: "Open the tracking link you received from us.", notFound: "This link was not found or has expired. Please ask us for a new link.",
     net: "Couldn't load the data. Check your connection and try again.", retry: "Try again",
@@ -59,6 +60,7 @@ const T = {
     received: "Nhận", eta: "Dự kiến xong", finished: "Kết thúc",
     etaTxt: (d) => (d === 0 ? "Hôm nay" : d === 1 ? "Ngày mai" : `~${d} ngày`),
     day: (a, b) => `Ngày ${a}/${b}`, gold: "vàng", gems: "KC",
+    matches: "Trận hôm nay", full: "Full 100 trận",
     none: "Không có đơn nào khớp.", empty: "Hiện chưa có đơn nào.",
     noKey: "Hãy mở đúng link tra cứu bạn được gửi.", notFound: "Không tìm thấy link này hoặc link đã hết hạn. Hãy hỏi chúng tôi link mới.",
     net: "Không tải được dữ liệu. Kiểm tra mạng rồi thử lại.", retry: "Thử lại",
@@ -165,7 +167,7 @@ function App() {
   const dem = useMemo(() => ({ run: ds.filter((x) => x.nhom === "run").length, done: ds.filter((x) => x.nhom === "done").length, stop: ds.filter((x) => x.nhom === "stop").length,
     gold: ds.filter((x) => x.nhom === "run").reduce((a, x) => a + x.g, 0) }), [ds]);
   const qq = q.trim().toLowerCase().replace(/\s+/g, "");
-  const loc2 = ds.filter((x) => (loc === "all" || x.nhom === loc) && (!qq || String(x.n).toLowerCase().includes(qq)));
+  const loc2 = ds.filter((x) => (loc === "all" || x.nhom === loc) && (!qq || String(x.n).toLowerCase().includes(qq) || String(x.ten || "").toLowerCase().replace(/\s+/g, "").includes(qq)));
   const dang = loc2.filter((x) => x.nhom === "run").sort((a, b) => (a.d === b.d ? so(a.n) - so(b.n) : a.d < b.d ? -1 : 1));
   const xong = loc2.filter((x) => x.nhom !== "run").sort((a, b) => (b.tx || 0) - (a.tx || 0));
 
@@ -284,8 +286,8 @@ function The({ x, t, f, now }) {
     <article className="min-w-0 rounded-[var(--radius-card)] border border-line bg-white p-4 shadow-[var(--shadow-card)]">
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <span className="truncate text-[16px] font-bold tracking-[-0.01em] text-ink">{x.n}</span>
-          {x.a && <span className="tnum rounded-md bg-wash px-1.5 py-0.5 text-[12px] font-semibold text-ink-2">{x.a}</span>}
+          <span className={cn("min-w-0 font-bold tracking-[-0.01em] text-ink", x.ten ? "[overflow-wrap:anywhere] text-[14.5px] leading-snug" : "truncate text-[16px]")}>{x.ten || x.n}</span>
+          {x.a && !x.ten && <span className="tnum rounded-md bg-wash px-1.5 py-0.5 text-[12px] font-semibold text-ink-2">{x.a}</span>}
         </div>
         <Badge tone={tone} dot className="shrink-0">{t.s[x.s]}</Badge>
       </div>
@@ -319,6 +321,9 @@ function The({ x, t, f, now }) {
 
       <dl className="tnum mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-line-2 pt-2.5 text-[12.5px]">
         {x.t0 > 0 && <div className="flex gap-1"><dt className="text-ink-3">{t.received}</dt><dd className="font-medium text-ink-2">{f.dt(x.t0)}</dd></div>}
+        {x.nhom === "run" && x.mt != null && x.s !== "noi" && (x.s === "cho" || +x.mt >= 100
+          ? <div className="flex gap-1"><dd className="rounded-md bg-wait-soft px-1.5 font-semibold text-wait-ink">{t.full}</dd></div>
+          : <div className="flex gap-1"><dt className="text-ink-3">{t.matches}</dt><dd className="font-medium text-ink">{f.n(x.mt)}/100</dd></div>)}
         {x.nhom === "run" && x.e != null && x.s !== "noi" && <div className="flex gap-1"><dt className="text-ink-3">{t.eta}</dt><dd className="font-medium text-ink">{t.etaTxt(+x.e)}</dd></div>}
         {x.nhom !== "run" && x.tx > 0 && <div className="flex gap-1"><dt className="text-ink-3">{t.finished}</dt><dd className="font-medium text-ink-2">{f.dt(x.tx)}</dd></div>}
       </dl>
