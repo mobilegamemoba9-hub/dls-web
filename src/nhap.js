@@ -49,7 +49,7 @@ export function docSheet(text) {
     const base = "c" + fnv(normName(n) + "|" + d);
     dem[base] = (dem[base] || 0) + 1;
     const id = dem[base] > 1 ? `${base}_${dem[base]}` : base;
-    const x = { id, n: n.slice(0, 100), d };
+    const x = { id, n: n.slice(0, 100), d, i: list.length };     // i = thứ tự dòng trong Sheet (giữ thứ tự khách VN)
     const b = String(r[cB] || "").trim(), c = String(r[cC] || "").trim(), g = giaSach(r[cG]);
     if (b) x.b = b.slice(0, 30);
     if (c) x.c = c.slice(0, 200);

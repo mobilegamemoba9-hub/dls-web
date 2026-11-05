@@ -91,7 +91,7 @@ export function kenhOf(name, src) {
 }
 export function srcFromName(name) {
   const n = String(name || "").trim().toUpperCase();
-  if (/^(GL\.|KICK)/.test(n)) return "Tay";
+  if (/^(GL\.|KICK|GIFT)/.test(n)) return "Tay";                 // đơn tay / đơn lạ
   return n.startsWith("NGL") ? "NGL" : n.startsWith("IML") ? "IML" : "Khách VN";
 }
 
@@ -139,6 +139,7 @@ export function buildOrders(data, live) {
   // 1) đơn tự động từ máy nhà
   for (const [day, os] of Object.entries((data && data.don) || {})) for (const [id, x] of Object.entries(os || {})) {
     if (!x || typeof x !== "object") continue;
+    if (x.s === "loi") continue;                                  // đơn lỗi cần kiểm tay: không đưa vào danh sách (đã có ở Số TREO / Cảnh báo)
     seen.add(normName(x.n));
     const st0 = x.s === "noi" ? "noi" : x.s === "loi" ? "kiem" : null;
     finish({ id, from: "auto", name: x.n || "", src: SRC[x.src] || "Khách VN", m: x.m != null ? "M" + x.m : "", tab: x.tab ?? "—", day, start: dmy(day),
@@ -155,9 +156,24 @@ export function buildOrders(data, live) {
     if (!x || typeof x !== "object" || !x.d) continue;
     if (seen.has(normName(x.n))) continue;
     finish({ id, from: "cu", name: x.n || "", src: srcFromName(x.n), m: mayFromName(x.n), tab: "—", day: x.d, start: dmy(x.d), g: 0, tg: 0,
-      st: stFromSheet(x.b), rev: x.r || "", note: x.c || "" });
+      st: stFromSheet(x.b), rev: x.r || "", note: x.c || "", i: x.i });
   }
-  return out.sort((a, b) => (a.day === b.day ? (a.t || 0) - (b.t || 0) || a.name.localeCompare(b.name) : a.day < b.day ? -1 : 1));
+  return out.sort((a, b) => (a.day === b.day ? cmpTrongNgay(a, b) : a.day < b.day ? -1 : 1));
+}
+
+// Thứ tự trong 1 ngày giống Google Sheet: Khách VN -> NGL (theo số) -> IML (theo số) -> đơn tay / đơn lạ (GL.NGL, GL.IML, còn lại)
+const SO = /^(?:GL\.|KICK\.?)?(NGL|IML)(\d+)/i;
+function hang(o) {
+  const n = String(o.name || "").trim();
+  const m = SO.exec(n), tay = o.src === "Tay" || /^(GL|KICK|GIFT)\b/i.test(n);
+  if (tay) return [3, m ? (m[1].toUpperCase() === "NGL" ? 0 : 1) : 2, m ? +m[2] : 0];
+  if (o.src === "NGL" || o.src === "IML") return [o.src === "NGL" ? 1 : 2, 0, m ? +m[2] : 1e9];
+  return [0, 0, 0];
+}
+export function cmpTrongNgay(a, b) {
+  const x = hang(a), y = hang(b);
+  for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] - y[i];
+  return (a.i ?? 1e9) - (b.i ?? 1e9) || (a.t || 0) - (b.t || 0) || a.name.localeCompare(b.name);
 }
 
 // Trạng thái đơn tự động thấy trên máy -> lưu lại (để khi tab đã xóa+clone, web vẫn nhớ đơn xong/đang ở đâu).

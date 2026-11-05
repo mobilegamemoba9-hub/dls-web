@@ -75,6 +75,7 @@ function App({ user }) {
   const orders = useMemo(() => (data ? buildOrders(data, live) : []), [data, live]);
   const prices = useMemo(() => (data && giaOf(data.web.gia)) || initialPrices, [data]);
   const rate = (data && data.web.cfg && +data.web.cfg.rate) || 25800;
+  const reporting = useMemo(() => new Set(((live && live.real) || []).filter((m) => m.s !== "err").map((m) => m.code.toUpperCase())), [live]);
   const issues = useMemo(() => (live ? [...homeIssues(data), ...issuesOf(live)].sort((a, b) => (a.sev === b.sev ? 0 : a.sev === "err" ? -1 : b.sev === "err" ? 1 : 0)) : []), [live, data]);
   const badge = live ? issues.length : alertsData.filter((a) => a.sev !== "info").length;
 
@@ -109,7 +110,7 @@ function App({ user }) {
   const page = {
     "tong-quan": <TongQuan upd={upd} live={live} data={data} issues={issues} orders={orders} />,
     may: <May code={arg} live={live} />,
-    don: <Don orders={orders} prices={prices} onSave={onSave} ready={!!data} />,
+    don: <Don orders={orders} prices={prices} onSave={onSave} ready={!!data} reporting={reporting} />,
     "doanh-thu": <DoanhThu rate={rate} setRate={setRate} prices={prices} setPrices={setPrices} orders={orders} data={data} onSave={onSave} />,
     "canh-bao": <CanhBao live={live} data={data} issues={issues} />,
   }[v];

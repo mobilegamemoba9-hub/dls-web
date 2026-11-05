@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback, memo } from "react";
 import * as Popover from "@radix-ui/react-popover";
-import { Plus, Search, ArrowDownToLine, X, ChevronDown, Upload, FileUp } from "lucide-react";
+import { Plus, Search, ArrowDownToLine, X, ChevronDown, Upload, FileUp, Check, CheckCheck } from "lucide-react";
 import { Badge, CopyBtn, Button, Segmented, GoldBar, Coin, cn } from "../ui.jsx";
 import { isUsd, fmt, curOf, tinhHan } from "../data.js";
 import { ymd } from "../store.js";
@@ -15,7 +15,14 @@ const XONG = ["xong", "ban", "dung"];
 const TODAY = ymd(Date.now());
 const ddmm = (day) => { const [, m, d] = day.split("-"); return `${d}/${m}`; };
 
-export default function Don({ orders: raw, prices, onSave, ready }) {
+function useWide() {
+  const q = "(min-width: 1400px)";
+  const [w, setW] = useState(() => typeof matchMedia !== "undefined" && matchMedia(q).matches);
+  useEffect(() => { const m = matchMedia(q); const f = () => setW(m.matches); m.addEventListener("change", f); return () => m.removeEventListener("change", f); }, []);
+  return w;
+}
+
+export default function Don({ orders: raw, prices, onSave, ready, reporting }) {
   const orders = useMemo(() => raw.map((o) => {
     const h = tinhHan(o, prices);
     if (o.st === "dung") return { ...o, ...h, left: "Đã dừng", ls: "none" };
@@ -44,10 +51,17 @@ export default function Don({ orders: raw, prices, onSave, ready }) {
   const dueK = (x) => (x.dueT == null ? Infinity : x.dueT);
   const days = [...new Set(list.map((x) => x.day))].sort((a, b) => (srt === "desc" ? (a < b ? 1 : -1) : a < b ? -1 : 1));
   const groups = days.map((d) => { let os = list.filter((x) => x.day === d); if (srt === "due") os = [...os].sort((a, b) => dueK(a) - dueK(b)); return { d, os }; });
-  const isOpen = (d, os) => (d in open ? open[d] : !!ql || tab !== "all" || !os.every((x) => XONG.includes(x.st)));
+  const moc = ymd(Date.now() - 10 * 86400000);                // mặc định chỉ mở 10 ngày gần nhất (ngày cũ hơn bấm để mở) -> lướt nhẹ
+  const isOpen = (d, os) => (d in open ? open[d] : !!ql || (tab !== "all" ? true : d >= moc && !os.every((x) => XONG.includes(x.st))));
   const toggle = (d, os) => setOpen((c) => ({ ...c, [d]: !isOpen(d, os) }));
 
   const update = (id, patch) => onSave(Object.fromEntries(Object.entries(patch).map(([k, v]) => [`sua/${id}/${k}`, v === "" ? null : v])));
+  const saveRef = useRef(update); saveRef.current = update;
+  const upd = useCallback((id, patch) => saveRef.current(id, patch), []);          // hàm cố định -> các dòng không vẽ lại khi không đổi
+  const wide = useWide();
+  // đánh dấu xong cả ngày: chỉ đơn Đang cày, KHÔNG thấy trên máy, và (đã tới/qua hạn HOẶC máy của đơn có gửi dữ liệu mà không có đơn này)
+  const bulkOf = (os) => os.filter((x) => canXong(x) && ((x.dueT != null && x.dueT <= Date.now()) || (x.m && reporting && reporting.has(x.m))));
+  const bulkXong = (os) => onSave(Object.fromEntries(os.map((x) => [`sua/${x.id}/st`, "xong"]))).catch(() => {});
   const add = async (o) => {
     await onSave({ [`don_tay/${o.id}`]: o.v });
     setTab("all"); setSrc("all"); setOpen((c) => ({ ...c, [o.v.day]: true })); setQ(""); setSrt("asc"); setFlash(o.id);
@@ -76,7 +90,7 @@ export default function Don({ orders: raw, prices, onSave, ready }) {
             { k: "cay", l: "Đang cày", c: C.cay },
             { k: "late", l: "Quá hạn", c: C.late, ct: "err" },
             { k: "miss", l: "Chưa nhập giá", c: C.miss, ct: "warn" },
-            ...(C.kiem ? [{ k: "kiem", l: "Cần kiểm", c: C.kiem, ct: "err" }] : []),
+            ...(C.kiem ? [{ k: "kiem", l: "Đang nối code", c: C.kiem }] : []),
             { k: "xong", l: "Đã xong", c: C.xong },
             { k: "ban", l: "Acc bị khóa", c: C.ban },
           ]} />
@@ -94,9 +108,9 @@ export default function Don({ orders: raw, prices, onSave, ready }) {
 
       {!ready && <p className="rounded-2xl border border-dashed border-line bg-white/60 px-4 py-8 text-center text-[14px] text-ink-3">Đang đọc đơn…</p>}
 
-      {/* bảng (máy tính) */}
-      {groups.length > 0 && (
-      <div className="hidden overflow-hidden rounded-[var(--radius-card)] border border-line bg-white shadow-[var(--shadow-card)] min-[1400px]:block">
+      {/* CHỈ vẽ 1 kiểu: bảng (máy tính >= 1400px) hoặc thẻ (điện thoại) -> nhẹ hơn nhiều khi lướt */}
+      {groups.length > 0 && wide && (
+      <div className="overflow-hidden rounded-[var(--radius-card)] border border-line bg-white shadow-[var(--shadow-card)]">
         <div className="overflow-x-auto">
           <table className="w-full text-[13.5px]">
             <thead>
@@ -106,21 +120,8 @@ export default function Don({ orders: raw, prices, onSave, ready }) {
             </thead>
             {groups.map(({ d, os }) => (
               <tbody key={d} className="divide-y divide-line-2 border-t border-line">
-                <tr className="border-y border-[var(--day-line)] bg-[var(--day-bg)]"><td colSpan={7} className="px-5 py-2"><GroupHead d={d} os={os} open={isOpen(d, os)} onToggle={() => toggle(d, os)} /></td></tr>
-                {isOpen(d, os) && os.map((x) => (
-                <tr key={x.id} ref={x.id === flash ? endRef : undefined} className={cn("transition-colors hover:bg-wash/50", x.id === flash && "bg-gold-soft/70")}>
-                  <td className="py-2.5 pr-2 pl-5">
-                    <div className="flex items-center"><span className="max-w-[260px] truncate font-medium" title={x.name}>{x.name}</span><CopyBtn text={x.name} className="size-7" /></div>
-                    <div className="mt-0.5 flex items-center gap-2"><Src s={x.src} /><Where x={x} /></div>
-                  </td>
-                  <td className="px-2.5"><Progress x={x} /></td>
-                  <td className="px-2.5 tnum whitespace-nowrap font-medium">{x.due}</td>
-                  <td className="px-2.5 whitespace-nowrap"><Left x={x} /></td>
-                  <td className="px-2.5"><Note x={x} update={update} /></td>
-                  <td className="px-2.5"><PricePicker value={x.rev} cur={curOf(x.src)} src={x.src} prices={prices} onPick={(v) => update(x.id, { rev: v })} /></td>
-                  <td className="py-2.5 pr-5 pl-2.5"><StatusPick x={x} update={update} /></td>
-                </tr>
-                ))}
+                <tr className="border-y border-[var(--day-line)] bg-[var(--day-bg)]"><td colSpan={7} className="px-5 py-2"><GroupHead d={d} os={os} open={isOpen(d, os)} onToggle={() => toggle(d, os)} bulk={bulkOf(os)} onBulk={bulkXong} /></td></tr>
+                {isOpen(d, os) && os.map((x) => <Row key={x.id} x={x} prices={prices} update={upd} flash={x.id === flash} rowRef={x.id === flash ? endRef : undefined} />)}
               </tbody>
             ))}
           </table>
@@ -128,42 +129,75 @@ export default function Don({ orders: raw, prices, onSave, ready }) {
       </div>
       )}
 
-      {/* thẻ (điện thoại, máy nhỏ) */}
-      <div className="space-y-4 min-[1400px]:hidden">
+      {groups.length > 0 && !wide && (
+      <div className="space-y-4">
         {groups.map(({ d, os }) => (
           <section key={d} aria-label={`Ngày thuê ${ddmm(d)}`}>
-            <div className="sticky top-[calc(env(safe-area-inset-top,0px)+3.5rem)] z-10 rounded-2xl border border-[var(--day-line)] bg-[var(--day-bg)] px-4 py-2.5 backdrop-blur-md lg:top-2"><GroupHead d={d} os={os} open={isOpen(d, os)} onToggle={() => toggle(d, os)} /></div>
+            <div className="sticky top-[calc(env(safe-area-inset-top,0px)+3.5rem)] z-10 rounded-2xl border border-[var(--day-line)] bg-[var(--day-bg)] px-4 py-2.5 lg:top-2"><GroupHead d={d} os={os} open={isOpen(d, os)} onToggle={() => toggle(d, os)} bulk={bulkOf(os)} onBulk={bulkXong} /></div>
             {isOpen(d, os) && (
             <ul className="mt-3 grid gap-3 lg:grid-cols-2">
-              {os.map((x) => (
-                <li key={x.id} ref={x.id === flash ? endRef : undefined} className={cn("rounded-2xl border border-line bg-white p-4 shadow-[var(--shadow-card)]", x.id === flash && "ring-2 ring-gold")}>
-            <div className="flex items-start gap-1"><span className="min-w-0 flex-1 text-[14.5px] leading-snug font-semibold break-all">{x.name}</span><CopyBtn text={x.name} className="-mt-1 -mr-1" /></div>
-            <div className="mt-1.5 flex flex-wrap items-center gap-1.5"><Src s={x.src} /><Where x={x} /><StatusPick x={x} update={update} className="ml-auto" /></div>
-            <div className="mt-3"><Progress x={x} wide /></div>
-            <dl className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-wash/70 px-3 py-2 text-[13px]">
-              <div><dt className="text-ink-3">Đến hạn</dt><dd className="tnum font-medium">{x.due}</dd></div>
-              <div><dt className="text-ink-3">Còn lại</dt><dd><Left x={x} /></dd></div>
-            </dl>
-            <div className="mt-3 flex items-center gap-3">
-              <span className="text-[12.5px] text-ink-3">Doanh thu</span>
-              <PricePicker value={x.rev} cur={curOf(x.src)} src={x.src} prices={prices} onPick={(v) => update(x.id, { rev: v })} />
-            </div>
-            <div className="mt-2.5"><Note x={x} update={update} wide /></div>
-          </li>
-              ))}
+              {os.map((x) => <CardRow key={x.id} x={x} prices={prices} update={upd} flash={x.id === flash} rowRef={x.id === flash ? endRef : undefined} />)}
             </ul>
             )}
           </section>
         ))}
       </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2 text-[13px] text-ink-3">
         {ready && !orders.length && <p className="w-full rounded-2xl border border-dashed border-line bg-white/60 px-4 py-8 text-center text-[14px] text-ink-3">Chưa có đơn nào. Đơn tự động hiện sau khi máy nhà cài gói WEB TỔNG ĐÀI; đơn cũ: bấm “Nhập đơn cũ từ Sheet”.</p>}
-        {orders.length > 0 && <span className="tnum">Đang hiện {fmt(list.length)} đơn trong {groups.length} ngày. Ngày đã xong hết đơn tự thu gọn, bấm tiêu đề ngày để mở.</span>}
+        {orders.length > 0 && <span className="tnum">Đang hiện {fmt(list.length)} đơn trong {groups.length} ngày. Ngày cũ hơn 10 ngày và ngày đã xong hết đơn tự thu gọn, bấm tiêu đề ngày để mở.</span>}
         {orders.length > 0 && !list.length && <Empty />}
         {list.length > 0 && <Button size="sm" variant="ghost" className="ml-auto" onClick={() => { if (days.length) setOpen((c) => ({ ...c, [days.at(-1)]: true })); setTimeout(() => { const rows = document.querySelectorAll(innerWidth >= 1400 ? "tbody tr" : "main section li"); rows[rows.length - 1]?.scrollIntoView({ behavior: "smooth", block: "center" }); }, 60); }}><ArrowDownToLine />Xuống đơn mới nhất</Button>}
       </div>
     </div>
+  );
+}
+
+const Row = memo(function Row({ x, prices, update, flash, rowRef }) {
+  return (
+    <tr ref={rowRef} className={cn("transition-colors hover:bg-wash/50 [content-visibility:auto] [contain-intrinsic-size:auto_64px]", flash && "bg-gold-soft/70")}>
+      <td className="py-2.5 pr-2 pl-5">
+        <div className="flex items-center"><span className="max-w-[260px] truncate font-medium" title={x.name}>{x.name}</span><CopyBtn text={x.name} className="size-7" /></div>
+        <div className="mt-0.5 flex items-center gap-2"><Src s={x.src} /><Where x={x} /></div>
+      </td>
+      <td className="px-2.5"><Progress x={x} /></td>
+      <td className="px-2.5 tnum whitespace-nowrap font-medium">{x.due}</td>
+      <td className="px-2.5 whitespace-nowrap"><Left x={x} /></td>
+      <td className="px-2.5"><Note x={x} update={update} /></td>
+      <td className="px-2.5"><PricePicker value={x.rev} cur={curOf(x.src)} src={x.src} prices={prices} onPick={(v) => update(x.id, { rev: v })} /></td>
+      <td className="py-2.5 pr-5 pl-2.5"><div className="flex items-center gap-1.5"><StatusPick x={x} update={update} /><QuickXong x={x} update={update} /></div></td>
+    </tr>
+  );
+});
+const CardRow = memo(function CardRow({ x, prices, update, flash, rowRef }) {
+  return (
+    <li ref={rowRef} className={cn("rounded-2xl border border-line bg-white p-4 shadow-[var(--shadow-card)] [content-visibility:auto] [contain-intrinsic-size:auto_250px]", flash && "ring-2 ring-gold")}>
+      <div className="flex items-start gap-1"><span className="min-w-0 flex-1 text-[14.5px] leading-snug font-semibold break-all">{x.name}</span><CopyBtn text={x.name} className="-mt-1 -mr-1" /></div>
+      <div className="mt-1.5 flex flex-wrap items-center gap-1.5"><Src s={x.src} /><Where x={x} /><span className="ml-auto flex items-center gap-1.5"><QuickXong x={x} update={update} /><StatusPick x={x} update={update} /></span></div>
+      <div className="mt-3"><Progress x={x} wide /></div>
+      <dl className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-wash/70 px-3 py-2 text-[13px]">
+        <div><dt className="text-ink-3">Đến hạn</dt><dd className="tnum font-medium">{x.due}</dd></div>
+        <div><dt className="text-ink-3">Còn lại</dt><dd><Left x={x} /></dd></div>
+      </dl>
+      <div className="mt-3 flex items-center gap-3">
+        <span className="text-[12.5px] text-ink-3">Doanh thu</span>
+        <PricePicker value={x.rev} cur={curOf(x.src)} src={x.src} prices={prices} onPick={(v) => update(x.id, { rev: v })} />
+      </div>
+      <div className="mt-2.5"><Note x={x} update={update} wide /></div>
+    </li>
+  );
+});
+
+/* nút nhanh "Đã xong" cho đơn đang hiện Đang cày mà KHÔNG thấy trên máy nào (đơn cũ đã xong nhưng Sheet/web chưa đổi) */
+const canXong = (x) => x.st === "cay" && !x.live;
+function QuickXong({ x, update }) {
+  if (!canXong(x)) return null;
+  return (
+    <button type="button" onClick={() => update(x.id, { st: "xong" })} title="Đơn này không thấy trên máy nào. Bấm nếu đơn đã cày xong."
+      className="inline-flex h-6 cursor-pointer items-center gap-1 rounded-full border border-ok/40 bg-white px-2 text-[12px] font-semibold whitespace-nowrap text-ok-ink hover:bg-ok-soft">
+      <Check className="size-3.5" />Xong
+    </button>
   );
 }
 
@@ -177,7 +211,7 @@ function StatusPick({ x, update, className }) {
   const s = STATUS[x.st] || STATUS.cay;
   return (
     <label className={cn("relative inline-flex cursor-pointer", className)} title="Bấm để sửa tình trạng">
-      <Badge tone={s.tone} dot>{s.l}</Badge>
+      <Badge tone={s.tone} dot>{s.l}<ChevronDown className="-mr-1 size-3 opacity-60" /></Badge>
       <select aria-label={`Tình trạng đơn ${x.name}`} value="" onChange={(e) => update(x.id, { st: e.target.value === "auto" ? null : e.target.value })} className="absolute inset-0 cursor-pointer opacity-0">
         <option value="" disabled>Đổi tình trạng</option>
         {["cay", "xong", "ban", "dung"].map((k) => <option key={k} value={k}>{STATUS[k].l}</option>)}
@@ -215,7 +249,8 @@ function Progress({ x, wide }) {
   );
 }
 const parseRev = (os) => os.reduce((a, x) => { if (!x.rev) return a; if (isUsd(x.rev)) a.usd += parseFloat(String(x.rev).replace(",", ".")) || 0; else a.vnd += parseInt(x.rev.replace(/\D/g, "")) || 0; return a; }, { vnd: 0, usd: 0 });
-function GroupHead({ d, os, open, onToggle }) {
+function GroupHead({ d, os, open, onToggle, bulk = [], onBulk }) {
+  const [ok, setOk] = useState(false);
   const priced = os.filter((x) => x.rev).length;
   const r = parseRev(os);
   const [y, m, dd] = d.split("-");
@@ -225,6 +260,13 @@ function GroupHead({ d, os, open, onToggle }) {
         <ChevronDown className={cn("size-4 transition-transform", !open && "-rotate-90")} />Ngày thuê: {dd}/{m}/{y}{d === TODAY && <span className="ml-1 rounded-full bg-[#F5C542] px-2 py-0.5 text-[11px] text-[#2A1E00] normal-case">Hôm nay</span>}
       </button>
       <span className="tnum text-[12.5px] text-[var(--day-ink)] opacity-70">{os.length} đơn</span>
+      {bulk.length > 0 && onBulk && (
+        <button type="button" onClick={() => { if (!ok) { setOk(true); return; } setOk(false); onBulk(bulk); }} onBlur={() => setOk(false)}
+          title={"Không thấy trên máy nào và đã tới hạn / máy của đơn có gửi dữ liệu:\n" + bulk.map((x) => x.name).join("\n")}
+          className={cn("inline-flex h-6 cursor-pointer items-center gap-1 rounded-full border px-2 text-[12px] font-semibold whitespace-nowrap", ok ? "border-ok bg-ok text-white" : "border-ok/40 bg-white/80 text-ok-ink hover:bg-ok-soft")}>
+          <CheckCheck className="size-3.5" />{ok ? `Bấm lần nữa: ${bulk.length} đơn → Đã xong` : `Đánh dấu xong ${bulk.length} đơn`}
+        </button>
+      )}
       <span className="tnum ml-auto text-[13px] font-semibold text-[var(--day-money)]">{[r.vnd > 0 && `${fmt(r.vnd)}đ`, r.usd > 0 && `${String(+r.usd.toFixed(2)).replace(".", ",")}$`].filter(Boolean).join(" + ") || (priced ? "0đ" : "Chưa có doanh thu")}</span>
     </div>
   );
