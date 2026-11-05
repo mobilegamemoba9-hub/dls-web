@@ -133,7 +133,7 @@ export default function May({ code, live }) {
       )}
       {!list.length && m.s !== "none" && <p className="rounded-2xl border border-dashed border-line px-4 py-8 text-center text-[14px] text-ink-3">Máy này không có tab nào ở trạng thái này.</p>}
       {real && m.s !== "none" && <p className="text-[13px] text-ink-3">{nut
-        ? "Nút dưới mỗi tab chỉ sửa sổ của máy (mở khóa tab lỗi, cờ DIRTY, ngày bù, đóng gói đã dừng). Máy hỏi lệnh mỗi 2 phút, tự kiểm lại điều kiện an toàn trước khi làm; lệnh quá 10 phút thì hết hạn. Không có nút bật/tắt bot, LD hay xóa tab."
+        ? "Nút dưới mỗi tab: mở khóa tab lỗi, cờ DIRTY, ngày bù, đóng gói đã dừng, tạm dừng / chạy tiếp bot (như nút ⏸ ▶ Dashboard). Máy hỏi lệnh mỗi 1 phút, tự kiểm lại điều kiện an toàn trước khi làm; lệnh quá 10 phút thì hết hạn. Không có nút tắt/mở bot, LD hay xóa tab."
         : m.s === "err" ? "Máy mất tín hiệu: tạm ẩn nút điều khiển." : "Nút điều khiển: cài gói NUT_WEB trên máy này."}</p>}
     </div>
   );
@@ -202,8 +202,8 @@ function TabCard({ t, real, nut, gui, cho = [], may }) {
 
 /* ================= LÁT 5: NÚT ĐIỀU KHIỂN AN TOÀN =================
    Mỗi tab chỉ hiện nút hợp với tình trạng tab (máy vẫn tự kiểm lại trước khi làm).
-   Xác nhận: Mở khóa / Đặt lại cờ / Đóng gói / Mở lại gói = bấm 2 lần. Gỡ cờ DIRTY + Ngày bù = gõ lại số tab. */
-const SO_TAB = new Set(["go_dirty", "ngay_bu"]);
+   Xác nhận: Mở khóa / Đặt lại cờ / Đóng gói / Mở lại gói = bấm 2 lần. Gỡ cờ DIRTY, Ngày bù, Tạm dừng, Chạy tiếp = gõ lại số tab. */
+const SO_TAB = new Set(["go_dirty", "ngay_bu", "tam_dung", "chay_tiep"]);
 const NEW_RX = /^NEW\d+$/i;
 const NGAY = [-1, -0.5, 0.5, 1, 2];
 const soNgay = (x) => (x > 0 ? "+" : "−") + String(Math.abs(x)).replace(".", ",");
@@ -215,6 +215,8 @@ function tacVu(t) {
   if (t.k === "sach" && !t.co && !t.pkg) out.push({ l: "dat_dirty" });
   if (t.pkg && t.p != null && t.td > 0 && ["cay", "cho", "dung", "warn"].includes(t.k) && !t.ps) out.push({ l: "ngay_bu" });
   if (t.ps && t.p != null) out.push({ l: "dong_goi" });
+  if (t.pkg && t.p != null && !t.ps && (t.k === "cay" || (t.k === "cho" && !t.nghi))) out.push({ l: "tam_dung" });
+  if (t.pkg && t.k === "dung") out.push({ l: "chay_tiep" });
   return out;
 }
 
@@ -241,8 +243,8 @@ function NutTab({ t, gui, cho, may }) {
     if (!canSo && !lan) { setLan(true); return; }
     setDang(true);
     try {
-      await gui({ l: a.l, tab: t.i, p: ["ngay_bu", "dong_goi"].includes(a.l) ? t.p : undefined, so: a.l === "ngay_bu" ? ngay : undefined, ai: t.name || t.ten || "" });
-      setTt(`Đã gửi "${LOAI[a.l].l}" tab ${t.i} · máy làm trong ≤ 2 phút`); setMo(null); setSo(""); setLan(false);
+      await gui({ l: a.l, tab: t.i, p: ["ngay_bu", "dong_goi", "tam_dung", "chay_tiep"].includes(a.l) ? t.p ?? undefined : undefined, so: a.l === "ngay_bu" ? ngay : undefined, ai: t.name || t.ten || "" });
+      setTt(`Đã gửi "${LOAI[a.l].l}" tab ${t.i} · máy làm trong ≤ 1 phút`); setMo(null); setSo(""); setLan(false);
     } catch (e) { setTt("Chưa gửi được: " + ((e && (e.code || e.message)) || "lỗi mạng")); }
     finally { setDang(false); }
   };
