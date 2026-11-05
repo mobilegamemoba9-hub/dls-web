@@ -22,6 +22,7 @@ const NGON_NGU = ["en", "vi", "bn", "uz"];
 const TONE_S = { noi: "wait", cay: "run", cho: "wait", tam: "warn", gd: "warn", xong: "ok", dung: "err", ket: "off" };
 const DOT = { wait: "bg-wait", run: "bg-run", warn: "bg-warn", ok: "bg-ok", err: "bg-err", off: "bg-off" };
 const CHU = { wait: "text-wait-ink", run: "text-run-ink", warn: "text-warn-ink", ok: "text-ok-ink", err: "text-err-ink", off: "text-ink-3" };
+const SO_MAU = { run: "text-run-ink", gold: "text-gold-ink", ok: "text-ok-ink", err: "text-err-ink" };
 const NHOM = (s) => (s === "xong" || s === "ket" ? "done" : s === "dung" ? "stop" : "run");
 
 const lsGet = (k) => { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch { return null; } };
@@ -78,6 +79,10 @@ function ghiChu(x, t, f, now) {
   return "";
 }
 const full100 = (x) => x.s === "cho" || +x.mt >= 100;
+// dự kiến xong: gói vàng mới cày < 5% -> chưa đủ số liệu ("Đang tính"), tránh số vô lý kiểu ~164 ngày
+const coDk = (x) => x.nhom === "run" && x.s !== "noi" && !x.cs;
+const dk = (x) => (!coDk(x) ? undefined : x.tg > 0 && (+x.pc || 0) < 5 ? null : x.e == null ? undefined : +x.e);
+const sapXong = (x) => { const d = dk(x); return d != null && d <= 1; };
 
 // 1 dòng chép gửi khách: "NGL269.30K.29/10(8179) M48 — Farming · 24,000/30,000 gold (80%) · Matches today 45/100 · Est. finish ~2 days"
 function textChep(x, t, f, now) {
@@ -86,7 +91,10 @@ function textChep(x, t, f, now) {
   else if (+x.td > 0) a.push(`${t.day(f.d1(Math.min(+x.nd || 0, +x.td)), f.d1(x.td))} (${f.pc(x.pc)})`);
   if (x.tk > 0) a.push(`${f.n(x.k)}/${f.n(x.tk)} ${t.gems}`);
   if (x.nhom === "run" && x.mt != null && x.s !== "noi") a.push(full100(x) ? t.full : `${t.matches} ${f.n(x.mt)}/100`);
-  if (x.nhom === "run" && x.e != null && x.s !== "noi") a.push(`${t.eta} ${t.etaTxt(+x.e)}`);
+  const d = dk(x);
+  if (d === null) a.push(`${t.eta}: ${t.calc}`);
+  else if (d != null) a.push(`${t.eta} ${t.etaTxt(d)}`);
+  if (x.nhom === "run" && +x.g7 > 0) a.push(`+${f.n(x.g7)} ${t.gold} ${t.today}`);
   if (x.nhom !== "run" && x.tx > 0) a.push(`${t.finished} ${f.dt(x.tx)}`);
   const g = x.s === "dung" ? ghiChu(x, t, f, now) : "";
   return a.join(" · ") + (g ? ` — ${g}` : "");
@@ -166,12 +174,12 @@ function App() {
   const cmp = p === "IML"
     ? (a, b) => (String(a.d || "") === String(b.d || "") ? so(a.n) - so(b.n) : String(a.d || "") < String(b.d || "") ? -1 : 1)     // IML: ngày cũ -> số nhỏ
     : (a, b) => so(a.n) - so(b.n) || (String(a.d || "") < String(b.d || "") ? -1 : 1);                                                // NGL: số nhỏ lên trên
-  const dem = useMemo(() => ({ run: ds.filter((x) => x.nhom === "run").length, done: ds.filter((x) => x.nhom === "done").length, stop: ds.filter((x) => x.nhom === "stop").length,
-    gold: ds.filter((x) => x.nhom === "run").reduce((a, x) => a + x.g, 0) }), [ds]);
+  const dem = useMemo(() => ({ run: ds.filter((x) => x.nhom === "run").length, soon: ds.filter(sapXong).length,
+    done: ds.filter((x) => x.nhom === "done").length, stop: ds.filter((x) => x.nhom === "stop").length }), [ds]);
   const qq = q.trim().toLowerCase().replace(/\s+/g, "");
-  const loc2 = ds.filter((x) => (loc === "all" || x.nhom === loc) && (!qq || String(x.n).toLowerCase().includes(qq) || String(x.ten || "").toLowerCase().replace(/\s+/g, "").includes(qq)));
+  const loc2 = ds.filter((x) => (loc === "all" || (loc === "soon" ? sapXong(x) : x.nhom === loc)) && (!qq || String(x.n).toLowerCase().includes(qq) || String(x.ten || "").toLowerCase().replace(/\s+/g, "").includes(qq)));
   const nhom = { run: loc2.filter((x) => x.nhom === "run").sort(cmp), done: loc2.filter((x) => x.nhom === "done").sort(cmp), stop: loc2.filter((x) => x.nhom === "stop").sort(cmp) };
-  const moThat = (g) => mo[g] || loc === g || !!qq;     // lọc đúng khu hoặc đang tìm -> tự mở
+  const moThat = (g) => mo[g] || loc === g || (loc === "soon" && g === "run") || !!qq;     // lọc đúng khu hoặc đang tìm -> tự mở
 
   const nodeT = data && data.t ? data.t * 1000 : 0;
   const cu = nodeT && now - nodeT > CU_MS;
@@ -181,9 +189,9 @@ function App() {
     <div className="mx-auto w-full max-w-[1180px] px-4 pb-14 pt-[max(16px,env(safe-area-inset-top))] sm:px-6">
       <header className="flex flex-wrap items-center justify-between gap-3 py-3">
         <div className="min-w-0">
-          <p className="text-[12.5px] font-medium uppercase tracking-[0.08em] text-ink-3">{t.sub}</p>
           <h1 className="text-[26px] font-bold tracking-[-0.02em] sm:text-[30px]">{t.title}</h1>
-          {p && <p className="mt-0.5 text-[14px] font-medium text-ink-2">{t.partner(p)}</p>}
+          {p && <p className="mt-0.5 text-[14.5px] font-semibold text-ink-2">{t.partner(p)}</p>}
+          {nodeT > 0 && <p className="tnum mt-0.5 text-[12.5px] text-ink-3" title={f.dt(nodeT / 1000)}>{t.upd(t.ago(Math.floor((now - nodeT) / 60000)))}{err && <span className="ml-2 font-medium text-err-ink">{t.net}</span>}</p>}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div role="group" aria-label={t.lang} className="inline-flex rounded-xl border border-line bg-white p-0.5 shadow-[var(--shadow-card)]">
@@ -207,29 +215,20 @@ function App() {
         : data === null ? <Thong t={err ? t.net : t.notFound} nut={err ? t.retry : null} onNut={() => tai(true)} tone={err ? "err" : "off"} />
         : (
           <main className="space-y-4">
-            <p className="tnum text-[13px] text-ink-3">
-              {t.updated}: {nodeT ? `${f.dt(nodeT / 1000)} · ${t.ago(Math.floor((now - nodeT) / 60000))}` : "—"}
-              {err && <span className="ml-2 font-medium text-err-ink">· {t.net}</span>}
-            </p>
-            {cu && <div className="rounded-2xl border border-warn/30 bg-warn-soft px-4 py-3 text-[13.5px] text-warn-ink">{t.stale}</div>}
+            {cu && <div className="rounded-xl border border-warn/30 bg-warn-soft px-4 py-2.5 text-[13.5px] text-warn-ink">{t.stale}</div>}
 
-            <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
-              <O nhan={t.tiles.run} so={f.n(dem.run)} tone="run" />
-              <O nhan={t.tiles.done} so={f.n(dem.done)} tone="ok" />
-              <O nhan={t.tiles.stop} so={f.n(dem.stop)} tone="err" />
-              <O nhan={t.tiles.gold} so={<span className="inline-flex items-center gap-1.5">{f.n(dem.gold)}<Coin className="size-[0.85em]" /></span>} tone="gold" />
-            </div>
-
-            <div className="sticky top-0 z-10 -mx-4 flex flex-col gap-2 bg-canvas/90 px-4 py-2 backdrop-blur-sm sm:static sm:mx-0 sm:flex-row sm:items-center sm:rounded-[var(--radius-card)] sm:border sm:border-line sm:bg-white sm:p-3 sm:shadow-[var(--shadow-card)] sm:backdrop-blur-none">
-              <div className="flex min-w-0 gap-1 overflow-x-auto" role="group">
-                {["all", "run", "done", "stop"].map((x) => (
-                  <button key={x} type="button" onClick={() => setLoc(x)} aria-pressed={loc === x}
-                    className={cn("h-8 shrink-0 cursor-pointer rounded-[10px] px-3 text-[13px] font-medium whitespace-nowrap transition-colors", loc === x ? "bg-ink text-white" : "bg-white text-ink-2 hover:bg-wash sm:bg-transparent")}>
-                    {t.f[x]}{x !== "all" && <span className="tnum ml-1.5 opacity-70">{f.n(dem[x])}</span>}
+            {/* 1 dải duy nhất: số đếm = nút lọc (bấm lại để bỏ lọc) */}
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+              <div role="group" className="grid flex-1 grid-cols-4 overflow-hidden rounded-xl border border-line bg-white">
+                {[["run", "run"], ["soon", "gold"], ["done", "ok"], ["stop", "err"]].map(([x, tone], i) => (
+                  <button key={x} type="button" onClick={() => setLoc(loc === x ? "all" : x)} aria-pressed={loc === x}
+                    className={cn("min-w-0 cursor-pointer px-2 py-2 text-left transition-colors sm:px-3.5", i && "border-l border-line-2", loc === x ? "bg-ink text-white" : "hover:bg-wash")}>
+                    <div className={cn("tnum text-[19px] font-bold leading-tight sm:text-[21px]", loc === x ? "text-white" : SO_MAU[tone])}>{f.n(dem[x])}</div>
+                    <div className={cn("truncate text-[11.5px] font-medium sm:text-[12.5px]", loc === x ? "text-white/80" : "text-ink-3")}>{x === "soon" ? t.soon : t.f[x]}</div>
                   </button>
                 ))}
               </div>
-              <label className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-xl border border-line bg-white px-3 focus-within:border-brand focus-within:ring-3 focus-within:ring-brand/15 sm:ml-auto sm:max-w-[320px]">
+              <label className="flex h-10 min-w-0 items-center gap-2 rounded-xl border border-line bg-white px-3 focus-within:border-brand focus-within:ring-3 focus-within:ring-brand/15 sm:h-auto sm:w-[280px]">
                 <Search className="size-4 shrink-0 text-ink-3" />
                 <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.search} aria-label={t.search} className="h-full min-w-0 flex-1 bg-transparent text-[14px] text-ink focus:outline-none" />
                 {q && <button type="button" onClick={() => setQ("")} aria-label={t.clear} className="grid size-6 cursor-pointer place-items-center rounded-md text-ink-3 hover:bg-wash"><X className="size-3.5" /></button>}
@@ -243,19 +242,9 @@ function App() {
                   {nhom[g].map((x) => <Dong key={x.id} x={x} t={t} f={f} now={now} mo={moDon.has(x.id)} onDoi={() => doiDon(x.id)} moi={moi.has(x.id)} />)}
                 </Nhom>
               ))}
-            <p className="pt-2 text-center text-[12.5px] text-ink-3">{t.foot(f.zone)}</p>
+            <p className="pt-2 text-center text-[12.5px] leading-relaxed text-ink-3">{t.keep} {t.foot(f.zone)}</p>
           </main>
         )}
-    </div>
-  );
-}
-
-function O({ nhan, so: s, tone }) {
-  const c = { run: "text-run-ink", ok: "text-ok-ink", err: "text-err-ink", gold: "text-gold-ink" }[tone];
-  return (
-    <div className="min-w-0 rounded-2xl border border-line bg-white px-3.5 py-2.5 shadow-[var(--shadow-card)] sm:rounded-[var(--radius-card)] sm:px-4 sm:py-3">
-      <div className="truncate text-[12px] font-medium text-ink-3 sm:text-[12.5px]">{nhan}</div>
-      <div className={cn("tnum mt-0.5 text-[21px] font-bold leading-tight sm:text-[24px]", c)}>{s}</div>
     </div>
   );
 }
@@ -269,9 +258,9 @@ function Nhom({ g, ten, n, moi, t, f, mo, onDoi, children }) {
         <span className={cn("size-2 rounded-full", DOT[tone])} />
         {ten}<span className="tnum text-[13px] font-medium text-ink-3">{f.n(n)}</span>
         {moi > 0 && <span className="rounded-full bg-brand px-1.5 py-px text-[11px] font-bold text-white">{f.n(moi)} {t.neu}</span>}
-        <span className="ml-auto inline-flex items-center gap-1 text-[12.5px] font-medium text-ink-3">{mo ? t.hide : t.show}<ChevronDown className={cn("size-4 transition-transform", mo && "rotate-180")} /></span>
+        <span className="ml-auto grid size-7 place-items-center rounded-lg text-ink-3" aria-label={mo ? t.hide : t.show}><ChevronDown className={cn("size-4 transition-transform", mo && "rotate-180")} /></span>
       </button>
-      {mo && <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">{children}</div>}
+      {mo && <div className="grid grid-cols-1 items-start gap-2 md:grid-cols-2 xl:grid-cols-3">{children}</div>}
     </section>
   );
 }
@@ -286,7 +275,7 @@ function Dong({ x, t, f, now, mo, onDoi, moi }) {
   const gc = ghiChu(x, t, f, now);
   const ten = x.ten || x.n;
   return (
-    <article className={cn("min-w-0 rounded-2xl border bg-white shadow-[var(--shadow-card)] transition-colors", mo ? "border-brand/40" : "border-line")}>
+    <article className={cn("min-w-0 rounded-xl border bg-white transition-colors", mo ? "border-brand/50 shadow-[var(--shadow-card)]" : "border-line hover:border-ink-3/40")}>
       <button type="button" onClick={onDoi} aria-expanded={mo} className="block w-full cursor-pointer px-3.5 py-2.5 text-left">
         <div className="flex items-center gap-2">
           {moi && <span className="shrink-0 rounded-md bg-brand px-1.5 py-px text-[10.5px] font-bold uppercase text-white">{t.neu}</span>}
@@ -296,13 +285,16 @@ function Dong({ x, t, f, now, mo, onDoi, moi }) {
           <ChevronDown className={cn("size-4 shrink-0 text-ink-3 transition-transform", mo && "rotate-180")} />
         </div>
         {coSo && <GoldBar pct={pct} tone={barTone} className="mt-1.5 h-1.5" />}
-        <div className="tnum mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[12.5px]">
-          <span className={cn("inline-flex items-center gap-1 font-medium", CHU[tone])}><span className={cn("size-1.5 rounded-full", DOT[tone])} />{t.s[x.s]}</span>
-          {x.nhom === "run" && x.mt != null && x.s !== "noi" && (full100(x)
-            ? <span className="rounded-md bg-wait-soft px-1.5 font-semibold text-wait-ink">{t.full}</span>
-            : <span className="text-ink-3">{t.matches} <b className="font-semibold text-ink">{f.n(x.mt)}/100</b></span>)}
-          {x.nhom === "run" && x.e != null && x.s !== "noi" && <span className="text-ink-3">{t.eta} <b className="font-semibold text-ink">{t.etaTxt(+x.e)}</b></span>}
-          {x.nhom !== "run" && x.tx > 0 && <span className="text-ink-3">{t.finished} <b className="font-medium text-ink-2">{f.dt(x.tx)}</b></span>}
+        <div className="tnum mt-1.5 flex items-center gap-x-2.5 text-[12.5px]">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5">
+            {(x.s !== "cay" || x.cs) && <span className={cn("inline-flex items-center gap-1 font-medium", CHU[tone])}><span className={cn("size-1.5 rounded-full", DOT[tone])} />{t.s[x.s]}</span>}
+            {x.nhom === "run" && x.mt != null && x.s !== "noi" && x.s !== "cho" && (+x.mt >= 100
+              ? <span className="font-medium text-wait-ink">{t.full}</span>
+              : <span className="text-ink-2">{t.tran(f.n(x.mt))}</span>)}
+            {x.nhom === "run" && +x.g7 > 0 && <span className="inline-flex items-center gap-0.5 font-medium text-gold-ink">+{f.n(x.g7)}<Coin className="size-[1em]" /><span className="font-normal text-ink-3">{t.today}</span></span>}
+          </div>
+          {coDk(x) && dk(x) !== undefined && <span className={cn("ml-auto shrink-0", dk(x) != null && dk(x) <= 1 ? "font-semibold text-ok-ink" : "text-ink-3")}>{dk(x) == null ? t.calc : t.left(dk(x))}</span>}
+          {x.nhom !== "run" && x.tx > 0 && <span className="ml-auto shrink-0 text-ink-3">{f.dt(x.tx)}</span>}
         </div>
       </button>
       {mo && (
@@ -318,6 +310,7 @@ function Dong({ x, t, f, now, mo, onDoi, moi }) {
               <span className="font-semibold text-ink">{f.n(x.k)}</span><span>/ {f.n(x.tk)}</span><Gem className="size-[1.05em]" /><span className="sr-only">{t.gems}</span>
             </div>
           )}
+          {x.nhom !== "run" && x.tx > 0 && <div className="tnum mt-1 text-[12.5px] text-ink-3">{t.finished} <span className="font-medium text-ink-2">{f.dt(x.tx)}</span></div>}
           {gc && <p className={cn("mt-1.5 leading-snug", x.s === "dung" ? "text-err-ink" : x.s === "gd" || x.s === "tam" ? "text-warn-ink" : "text-ink-2")}>{gc}</p>}
           <div className="tnum mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12.5px]">
             {x.t0 > 0 && <span><span className="text-ink-3">{t.received} </span><span className="font-medium text-ink-2">{f.dt(x.t0)}</span></span>}
