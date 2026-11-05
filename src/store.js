@@ -120,6 +120,11 @@ export function buildOrders(data, live) {
   for (const m of (live && live.real) || []) for (const t of m.tabs) if (t.pkg && t.name) byName.set(normName(t.name), { t, m });
   const out = [];
   const seen = new Set();
+  // đơn cũ (Sheet) đã nhập kiểu mới (có thứ tự dòng 'i') -> so được đơn tự động nào KHÔNG có trong Sheet
+  const cuAll = Object.values((data && data.web && data.web.don_cu) || {}).filter((x) => x && typeof x === "object" && x.d);
+  const soSheet = cuAll.some((x) => x.i != null);
+  const tenSheet = new Set(cuAll.map((x) => normName(x.n)));
+  const ngayCuoiSheet = cuAll.reduce((a, x) => (x.d > a ? x.d : a), "");
   const finish = (o) => {
     const s = sua[o.id] || {};
     const hit = byName.get(normName(o.name));
@@ -142,7 +147,7 @@ export function buildOrders(data, live) {
     if (x.s === "loi") continue;                                  // đơn lỗi cần kiểm tay: không đưa vào danh sách (đã có ở Số TREO / Cảnh báo)
     seen.add(normName(x.n));
     const st0 = x.s === "noi" ? "noi" : x.s === "loi" ? "kiem" : null;
-    finish({ id, from: "auto", name: x.n || "", src: SRC[x.src] || "Khách VN", m: x.m != null ? "M" + x.m : "", tab: x.tab ?? "—", day, start: dmy(day),
+    finish({ id, from: "auto", ngoaiSheet: soSheet && day <= ngayCuoiSheet && x.s === "ok" && !tenSheet.has(normName(x.n)), name: x.n || "", src: SRC[x.src] || "Khách VN", m: x.m != null ? "M" + x.m : "", tab: x.tab ?? "—", day, start: dmy(day),
       g: 0, tg: 0, st: st0 || "cay", ly: x.ly || "", t: x.t, fixed: !!st0 });
   }
   // 2) đơn tay nhập trên web

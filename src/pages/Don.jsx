@@ -9,9 +9,9 @@ import { docSheet, keHoachNhap } from "../nhap.js";
 const SRC_TONE = { NGL: "bg-[oklch(0.95_0.03_272)] text-s-ngl", IML: "bg-[oklch(0.95_0.035_192)] text-[oklch(0.45_0.09_192)]", "Khách VN": "bg-gold-soft text-gold-ink", Tay: "bg-off-soft text-ink-2" };
 const STATUS = {
   cay: { l: "Đang cày", tone: "run" }, xong: { l: "Đã xong", tone: "ok" }, ban: { l: "Acc bị khóa", tone: "err" },
-  dung: { l: "Đã dừng", tone: "warn" }, noi: { l: "Đang nối code", tone: "wait" }, kiem: { l: "Cần kiểm tay", tone: "err" },
+  dung: { l: "Đã dừng", tone: "warn" }, bo: { l: "Đã bỏ (không tính)", tone: "off" }, noi: { l: "Đang nối code", tone: "wait" }, kiem: { l: "Cần kiểm tay", tone: "err" },
 };
-const XONG = ["xong", "ban", "dung"];
+const XONG = ["xong", "ban", "dung", "bo"];
 const TODAY = ymd(Date.now());
 const ddmm = (day) => { const [, m, d] = day.split("-"); return `${d}/${m}`; };
 
@@ -26,6 +26,7 @@ export default function Don({ orders: raw, prices, onSave, ready, reporting }) {
   const orders = useMemo(() => raw.map((o) => {
     const h = tinhHan(o, prices);
     if (o.st === "dung") return { ...o, ...h, left: "Đã dừng", ls: "none" };
+    if (o.st === "bo") return { ...o, ...h, left: "Đã bỏ", ls: "none" };
     if (o.st === "noi" || o.st === "kiem") return { ...o, ...h, left: STATUS[o.st].l, ls: o.st === "kiem" ? "late" : "none" };
     return { ...o, ...h };
   }), [raw, prices]);
@@ -40,12 +41,14 @@ export default function Don({ orders: raw, prices, onSave, ready, reporting }) {
   const C = {
     cay: orders.filter((x) => x.st === "cay").length,
     late: orders.filter((x) => x.ls === "late").length,
-    miss: orders.filter((x) => !x.rev).length,
+    miss: orders.filter((x) => !x.rev && x.st !== "bo").length,
     xong: orders.filter((x) => x.st === "xong").length,
     ban: orders.filter((x) => x.st === "ban").length,
     kiem: orders.filter((x) => x.st === "kiem" || x.st === "noi").length,
+    ngoai: orders.filter((x) => x.ngoaiSheet && x.st !== "bo").length,
+    bo: orders.filter((x) => x.st === "bo").length,
   };
-  const match = { all: () => true, cay: (x) => x.st === "cay", late: (x) => x.ls === "late", miss: (x) => !x.rev, xong: (x) => x.st === "xong", ban: (x) => x.st === "ban", kiem: (x) => x.st === "kiem" || x.st === "noi" };
+  const match = { ngoai: (x) => x.ngoaiSheet && x.st !== "bo", bo: (x) => x.st === "bo", all: (x) => x.st !== "bo", cay: (x) => x.st === "cay", late: (x) => x.ls === "late", miss: (x) => !x.rev && x.st !== "bo", xong: (x) => x.st === "xong", ban: (x) => x.st === "ban", kiem: (x) => x.st === "kiem" || x.st === "noi" };
   const ql = q.trim().toLowerCase();
   const list = orders.filter((x) => (src === "all" || x.src === src) && (!ql || x.name.toLowerCase().includes(ql)) && match[tab](x));
   const dueK = (x) => (x.dueT == null ? Infinity : x.dueT);
@@ -74,7 +77,7 @@ export default function Don({ orders: raw, prices, onSave, ready, reporting }) {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-[26px] font-bold tracking-[-0.02em] sm:text-[30px]">Đơn hàng</h1>
-          <p className="mt-1 text-[13.5px] text-ink-2 tnum">{fmt(orders.length)} đơn · <span className="text-run-ink font-medium">{fmt(C.cay)} đang cày</span> · <span className="text-ok-ink font-medium">{fmt(C.xong)} xong</span> · <span className="text-err-ink font-medium">{fmt(C.ban)} acc bị khóa</span></p>
+          <p className="mt-1 text-[13.5px] text-ink-2 tnum">{fmt(orders.length - C.bo)} đơn · <span className="text-run-ink font-medium">{fmt(C.cay)} đang cày</span> · <span className="text-ok-ink font-medium">{fmt(C.xong)} xong</span> · <span className="text-err-ink font-medium">{fmt(C.ban)} acc bị khóa</span></p>
         </div>
         <div className="flex flex-wrap gap-2">
           {ready && <ImportOld orders={raw} onSave={onSave} again={coCu} />}
@@ -93,6 +96,8 @@ export default function Don({ orders: raw, prices, onSave, ready, reporting }) {
             ...(C.kiem ? [{ k: "kiem", l: "Đang nối code", c: C.kiem }] : []),
             { k: "xong", l: "Đã xong", c: C.xong },
             { k: "ban", l: "Acc bị khóa", c: C.ban },
+            ...(C.ngoai ? [{ k: "ngoai", l: "Không có trong Sheet", c: C.ngoai, ct: "warn" }] : []),
+            ...(C.bo ? [{ k: "bo", l: "Đã bỏ", c: C.bo }] : []),
           ]} />
         <div className="flex flex-wrap gap-2">
           <label className="relative min-w-[200px] flex-1">
@@ -203,7 +208,12 @@ function QuickXong({ x, update }) {
 
 function Where({ x }) {
   const t = [x.m, x.tab !== "—" && x.tab != null && x.tab !== "" ? `tab ${x.tab}` : ""].filter(Boolean).join(" · ");
-  return <span className="tnum text-[12.5px] text-ink-3">{t || (x.from === "cu" ? "đơn cũ (Sheet)" : "—")}{x.ly ? ` · ${x.ly}` : ""}</span>;
+  return (
+    <>
+      <span className="tnum text-[12.5px] text-ink-3">{t || (x.from === "cu" ? "đơn cũ (Sheet)" : "—")}{x.ly ? ` · ${x.ly}` : ""}</span>
+      {x.ngoaiSheet && x.st !== "bo" && <span title="Tổng đài đã nối code và tạo gói cho đơn này, nhưng Sheet BACKUP 2026 không có dòng nào cùng tên. Nếu đơn đã hủy / làm lại tay: đổi tình trạng thành 'Đã bỏ'." className="rounded-md bg-warn-soft px-1.5 py-0.5 text-[11.5px] font-semibold whitespace-nowrap text-warn-ink">Không có trong Sheet</span>}
+    </>
+  );
 }
 
 /* tình trạng: tự động theo máy; bấm để sửa tay (giống cột TÌNH TRẠNG của Sheet) */
@@ -214,7 +224,7 @@ function StatusPick({ x, update, className }) {
       <Badge tone={s.tone} dot>{s.l}<ChevronDown className="-mr-1 size-3 opacity-60" /></Badge>
       <select aria-label={`Tình trạng đơn ${x.name}`} value="" onChange={(e) => update(x.id, { st: e.target.value === "auto" ? null : e.target.value })} className="absolute inset-0 cursor-pointer opacity-0">
         <option value="" disabled>Đổi tình trạng</option>
-        {["cay", "xong", "ban", "dung"].map((k) => <option key={k} value={k}>{STATUS[k].l}</option>)}
+        {["cay", "xong", "ban", "dung", "bo"].map((k) => <option key={k} value={k}>{STATUS[k].l}</option>)}
         <option value="auto">Tự động theo máy</option>
       </select>
     </label>
@@ -248,7 +258,7 @@ function Progress({ x, wide }) {
     </div>
   );
 }
-const parseRev = (os) => os.reduce((a, x) => { if (!x.rev) return a; if (isUsd(x.rev)) a.usd += parseFloat(String(x.rev).replace(",", ".")) || 0; else a.vnd += parseInt(x.rev.replace(/\D/g, "")) || 0; return a; }, { vnd: 0, usd: 0 });
+const parseRev = (os) => os.reduce((a, x) => { if (!x.rev || x.st === "bo") return a; if (isUsd(x.rev)) a.usd += parseFloat(String(x.rev).replace(",", ".")) || 0; else a.vnd += parseInt(x.rev.replace(/\D/g, "")) || 0; return a; }, { vnd: 0, usd: 0 });
 function GroupHead({ d, os, open, onToggle, bulk = [], onBulk }) {
   const [ok, setOk] = useState(false);
   const priced = os.filter((x) => x.rev).length;

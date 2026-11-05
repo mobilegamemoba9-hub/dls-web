@@ -69,7 +69,9 @@ export function keHoachNhap(list, orders) {
   let ghep = 0;
   for (const x of list) {
     const o = ton.get(normName(x.n));
-    if (!o) { const { id, ...v } = x; cu[id] = v; continue; }
+    const { id, ...v } = x;
+    cu[id] = v;                                                  // lưu MỌI dòng Sheet (cả dòng trùng đơn tự động) -> web biết đơn nào có/không có trong Sheet
+    if (!o) continue;
     ghep++;
     if (x.r && !o.rev) patch[`sua/${o.id}/rev`] = x.r;
     if (x.c && !o.note) patch[`sua/${o.id}/note`] = x.c;
@@ -77,5 +79,5 @@ export function keHoachNhap(list, orders) {
     if (st === "xong" || st === "ban") patch[`sua/${o.id}/st`] = st;
   }
   patch.don_cu = cu;
-  return { patch, them: Object.keys(cu).length, ghep };
+  return { patch, them: Object.keys(cu).length - ghep, ghep };
 }
