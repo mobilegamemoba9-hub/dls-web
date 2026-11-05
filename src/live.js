@@ -19,7 +19,7 @@ export function tuoi(s) {
 }
 
 // trạng thái tab của web_tomtat -> khóa trang Máy
-const K = { cay: "cay", cho: "cho", dung: "dung", loi: "warn", xong: "xong", ngung: "ngung", san: "san", tao: "tao", nhan: "nhan", tat: "off" };
+const K = { cay: "cay", cho: "cho", dung: "dung", loi: "warn", xong: "xong", ngung: "ngung", san: "san", sach: "sach", tao: "tao", nhan: "nhan", tat: "off" };
 
 // Mã thoát của bot (web_tomtat cắt lỗi còn 60 ký tự) -> chữ dễ đọc. 90 = ngủ đêm vì đủ 100 trận: KHÔNG phải lỗi.
 const MA = { 92: "Acc bị khóa · bot đã dừng", 96: "Vàng/KC giảm (khách tiêu?) · bot đã dừng" };
@@ -38,6 +38,7 @@ function tabOf(x, code, nowMs) {
     i: num(x.i), k, code, nghi,
     pkg: !!x.n,
     name: x.n || "",
+    ten: x.ten || "",                    // tên giả lập (web_tomtat 05/11b đọc ldconsole)
     g, tg, td, ngay,
     kc: num(x.k7), kt: num(x.k), tk: num(x.tk),
     mt: num(x.t7),                       // trận từ 7h
@@ -82,7 +83,7 @@ export function buildLive(raw, nowMs = Date.now()) {
     return {
       code, m, s, why, cpu, ram: v.ram == null ? null : num(v.ram),
       hb: tuoi(age), age, t: num(v.t),
-      cay: c("cay"), cho: c("cho"), dung: c("dung"), san: c("san"), loi: loi.length, tat: c("off"),
+      cay: c("cay"), cho: c("cho"), dung: c("dung"), san: c("san"), sach: c("sach"), loi: loi.length, tat: c("off"),
       kho: v.kho || {}, g7: num(v.g7), k7: num(v.k7), moc: v.moc || "", tabs, real: true,
     };
   });

@@ -8,6 +8,7 @@ const ST = {
   cay: { l: "Đang cày", tone: "run" },
   cho: { l: "Full 100 trận", tone: "wait" },
   san: { l: "Sẵn sàng", tone: "ok" },
+  sach: { l: "Tab sạch", tone: "ok" },
   warn: { l: "Cần xem", tone: "warn" },
   off: { l: "Tắt", tone: "off" },
   dung: { l: "Tạm dừng", tone: "wait" },
@@ -93,6 +94,7 @@ export default function May({ code, live }) {
           { k: "cay", l: "Đang cày", dot: "run", c: cnt("cay") },
           { k: "cho", l: "Full 100 trận", dot: "wait", c: cnt("cho") },
           { k: "san", l: "Sẵn sàng", dot: "ok", c: cnt("san") },
+          { k: "sach", l: "Tab sạch", dot: "ok", c: cnt("sach") },
           { k: "warn", l: "Cần xem", dot: "warn", c: cnt("warn"), ct: cnt("warn") ? "warn" : undefined },
           { k: "dung", l: "Tạm dừng", dot: "wait", c: cnt("dung") },
           { k: "nhan", l: "Đang nhận đơn", dot: "gold", c: cnt("nhan") },
@@ -133,9 +135,9 @@ function TabCard({ t, real }) {
 
   if (!has) {
     const right = !real ? (t.k === "san" ? t.name : "Không có gói")
-      : t.pkg ? t.name : t.k === "san" ? "Chờ đơn" : t.k === "tao" ? "Đang chuẩn bị acc mới" : t.k === "nhan" ? "Đơn vừa gán" : "Không có gói";
+      : t.pkg ? t.name : t.k === "sach" ? (t.ten || "Chờ Agent dùng") : t.k === "san" ? (t.ten ? `${t.ten} · chờ đơn` : "Chờ đơn") : t.ten && t.k === "off" ? t.ten : t.k === "tao" ? "Đang chuẩn bị acc mới" : t.k === "nhan" ? "Đơn vừa gán" : "Không có gói";
     return (
-      <article className={cn("rounded-2xl border px-4 py-3", t.k === "san" ? "border-ok/25 bg-ok-soft/60" : t.k === "warn" ? "border-warn/40 bg-warn-soft/40" : "border-line-2 bg-white/60")}>
+      <article className={cn("rounded-2xl border px-4 py-3", t.k === "san" ? "border-ok/25 bg-ok-soft/60" : t.k === "sach" ? "border-ok/20 bg-ok-soft/25" : t.k === "warn" ? "border-warn/40 bg-warn-soft/40" : "border-line-2 bg-white/60")}>
         <div className="flex items-center gap-3">
           <span className="tnum w-12 shrink-0 text-[13px] font-semibold text-ink-3">Tab {t.i}</span>
           <Badge tone={st.tone} dot>{st.l}</Badge>
