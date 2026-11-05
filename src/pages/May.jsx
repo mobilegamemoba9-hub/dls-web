@@ -40,6 +40,8 @@ export default function May({ code, live }) {
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-[26px] font-bold tracking-[-0.02em] sm:text-[30px]">Máy {m.code}</h1>
           <Badge tone={MS[m.s].tone} dot>{MS[m.s].l}</Badge>
+          {real && m.s !== "none" && <span title={m.cu ? "Máy chạy bản cũ: web chưa tự biết đơn đã xong khi tab bị xóa + clone. Cài gói WEB_TOMTAT_C." : "web_tomtat bản mới nhất"}
+            className={cn("rounded-lg px-2 py-0.5 text-[12px] font-semibold tnum", m.cu ? "bg-warn-soft text-warn-ink" : "bg-wash text-ink-3")}>{m.cu ? `Bản cũ ${m.ban}` : `Bản ${m.ban}`}</span>}
         </div>
         <p className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13.5px] text-ink-2">
           {m.s !== "none" && <span className="inline-flex items-center gap-1.5"><HeartPulse className="size-4 text-ink-3" />{real ? "Cập nhật" : "Nhịp tim"} {m.hb} trước</span>}
@@ -66,6 +68,7 @@ export default function May({ code, live }) {
             className={cn("inline-flex h-9 items-center gap-2 rounded-xl border px-3 text-[14px] font-semibold transition-colors tnum",
               x.code === cur ? "border-shell bg-shell text-shell-ink" : x.s === "none" ? "border-dashed border-line bg-white/50 text-ink-3 hover:bg-white" : "border-line bg-white text-ink hover:bg-wash")}>
             <Dot tone={MS[x.s].tone} pulse={x.s === "err"} className="size-2" />{x.code}
+            {real && x.s !== "none" && x.cu && <span title={`Bản cũ ${x.ban} - chưa cài gói WEB_TOMTAT_C`} className={cn("text-[11px] font-semibold", x.code === cur ? "opacity-80" : "text-warn-ink")}>cũ</span>}
           </a>
         ))}
       </nav>
@@ -73,7 +76,13 @@ export default function May({ code, live }) {
       {m.s === "none" && (
         <div className="rounded-2xl border border-dashed border-line bg-white/60 px-4 py-6 text-[14px] text-ink-2">
           <p className="font-semibold text-ink">Máy {m.code} chưa gửi dữ liệu lên web.</p>
-          <p className="mt-1">Cài gói <span className="font-semibold">WEB TÓM TẮT</span> trên máy này (như máy 10) để thấy từng tab ở đây.</p>
+          <p className="mt-1">Chưa cài: cài gói <span className="font-semibold">WEB_TOMTAT_C</span> trên máy này để thấy từng tab ở đây.</p>
+        </div>
+      )}
+      {real && m.s !== "none" && m.cu && (
+        <div className="flex items-start gap-3 rounded-2xl border border-warn/30 bg-warn-soft px-4 py-3 text-[14px] text-warn-ink">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <p><span className="font-semibold">Máy chạy web_tomtat bản cũ ({m.ban}).</span> Web chưa tự biết đơn đã xong khi tab bị xóa + clone. Cài gói <span className="font-semibold">WEB_TOMTAT_C</span>.</p>
         </div>
       )}
       {m.s === "err" && (

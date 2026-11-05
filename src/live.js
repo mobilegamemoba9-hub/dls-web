@@ -8,6 +8,8 @@
 export const KNOWN = [2, 10, 35, 38, 40, 42, 48, 56, 101, 202];
 export const MAT_TIN_HIEU_S = 15 * 60;   // máy gửi ít nhất 10 phút/lần (+2 phút chu kỳ) -> quá 15 phút = mất tín hiệu
 export const CPU_CAO = 85;
+// (lát 4) bản web_tomtat mới nhất. Máy gửi 'b' từ 05/11c; bản cũ không có 'b' (05/11b có tên giả lập 'ten', 05/11 không có)
+export const BAN_MOI = "05/11c";
 
 const num = (v) => (Number.isFinite(+v) ? +v : 0);
 
@@ -67,8 +69,10 @@ export function buildLive(raw, nowMs = Date.now()) {
   const codes = [...new Set([...KNOWN, ...Object.keys(nodes).map(Number)])].sort((a, b) => a - b);
   const machines = codes.map((m) => {
     const code = "M" + m, v = nodes[m];
-    if (!v) return { code, m, s: "none", cay: 0, cho: 0, san: 0, loi: 0, tat: 0, cpu: null, hb: "", why: "Chưa cài gói WEB TÓM TẮT", tabs: [], g7: 0, k7: 0 };
-    const tabs = Object.values(v.tabs || {}).filter((x) => x && typeof x === "object").map((x) => tabOf(x, code, nowMs)).sort((a, b) => a.i - b.i);
+    if (!v) return { code, m, s: "none", cay: 0, cho: 0, san: 0, loi: 0, tat: 0, cpu: null, hb: "", why: "Chưa cài gói WEB TÓM TẮT", tabs: [], g7: 0, k7: 0, ban: "", cu: false };
+    const raws = Object.values(v.tabs || {}).filter((x) => x && typeof x === "object");
+    const tabs = raws.map((x) => tabOf(x, code, nowMs)).sort((a, b) => a.i - b.i);
+    const ban = v.b ? String(v.b) : raws.some((x) => x.ten) ? "05/11b" : "05/11";
     const c = (...ks) => tabs.filter((t) => ks.includes(t.k)).length;
     const age = now - num(v.t);
     const cpu = v.cpu == null ? null : num(v.cpu);
@@ -85,6 +89,7 @@ export function buildLive(raw, nowMs = Date.now()) {
       hb: tuoi(age), age, t: num(v.t),
       cay: c("cay"), cho: c("cho"), dung: c("dung"), san: c("san"), sach: c("sach"), loi: loi.length, tat: c("off"),
       kho: v.kho || {}, g7: num(v.g7), k7: num(v.k7), moc: v.moc || "", tabs, real: true,
+      ban, cu: ban !== BAN_MOI, kt: !!v.kh,
     };
   });
   return { machines, real: machines.filter((x) => x.s !== "none"), at: nowMs };

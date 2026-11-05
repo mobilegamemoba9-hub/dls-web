@@ -3,7 +3,7 @@ import * as Popover from "@radix-ui/react-popover";
 import { Plus, Search, ArrowDownToLine, X, ChevronDown, Upload, FileUp, Check, CheckCheck, Trash2, RotateCcw } from "lucide-react";
 import { Badge, CopyBtn, Button, Segmented, GoldBar, Coin, cn } from "../ui.jsx";
 import { isUsd, fmt, curOf, tinhHan } from "../data.js";
-import { ymd } from "../store.js";
+import { ymd, KT_TEXT, KT_NGAN } from "../store.js";
 import { docSheet, keHoachNhap } from "../nhap.js";
 
 const SRC_TONE = { NGL: "bg-[oklch(0.95_0.03_272)] text-s-ngl", IML: "bg-[oklch(0.95_0.035_192)] text-[oklch(0.45_0.09_192)]", "Khách VN": "bg-gold-soft text-gold-ink", Tay: "bg-off-soft text-ink-2" };
@@ -261,7 +261,7 @@ function Where({ x }) {
 function StatusPick({ x, update, className }) {
   const s = STATUS[x.st] || STATUS.cay;
   return (
-    <label className={cn("relative inline-flex cursor-pointer", className)} title="Bấm để sửa tình trạng">
+    <label className={cn("relative inline-flex cursor-pointer", className)} title={(x.ended && !x.live ? `Máy ${x.ended.m} báo ${KT_TEXT[x.ended.c] || "kết thúc"} lúc ${x.ended.t.slice(8, 10)}/${x.ended.t.slice(5, 7)} ${x.ended.t.slice(11, 16)}${x.ended.r ? " · " + x.ended.r : ""}. ` : "") + "Bấm để sửa tình trạng"}>
       <Badge tone={s.tone} dot>{s.l}<ChevronDown className="-mr-1 size-3 opacity-60" /></Badge>
       <select aria-label={`Tình trạng đơn ${x.name}`} value="" onChange={(e) => update(x.id, { st: e.target.value === "auto" ? null : e.target.value })} className="absolute inset-0 cursor-pointer opacity-0">
         <option value="" disabled>Đổi tình trạng</option>
@@ -290,12 +290,13 @@ function Progress({ x, wide }) {
     <div className={box}>
       <div className="flex items-center gap-1 whitespace-nowrap tnum text-[12.5px]">
         <span className="font-semibold text-ink">{fmt(x.g)}</span><span className="text-ink-3">/ {fmt(x.tg)}</span><Coin /><span className="sr-only">vàng</span>
-        {!x.live && x.kq && <span className="ml-1 text-[11.5px] text-ink-3">(lần cuối thấy)</span>}
+        {!x.live && !x.ended && x.kq && <span className="ml-1 text-[11.5px] text-ink-3">(lần cuối thấy)</span>}
       </div>
       <div className="mt-1 flex items-center gap-2">
         <GoldBar pct={p} tone={x.st === "ban" ? "run" : barTone(x)} className="h-1 flex-1" />
         <span className={cn("tnum w-9 text-right text-[12px] font-semibold", p >= 100 ? "text-ok-ink" : x.ls === "late" ? "text-err-ink" : "text-gold-ink")}>{Math.round(p)}%</span>
       </div>
+      {!x.live && x.ended && <div className="mt-0.5 truncate text-[11.5px] text-ink-3" title={`${x.ended.m} báo ${KT_TEXT[x.ended.c] || "kết thúc"}${x.ended.r ? " · " + x.ended.r : ""}`}>{x.ended.m} báo {KT_NGAN[x.ended.c] || "kết thúc"} · {x.ended.t.slice(8, 10)}/{x.ended.t.slice(5, 7)} {x.ended.t.slice(11, 16)}</div>}
     </div>
   );
 }

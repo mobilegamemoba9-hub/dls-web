@@ -32,10 +32,17 @@ const WEB_NHANH = ["sua", "gia", "cfg", "don_tay", "don_cu", "cong_no"];
 // -> { may, nha, so, cb, don: {ngày: {o..}}, web: {sua, gia, cfg, don_tay, don_cu, cong_no}, at }
 export async function loadAll() {
   const [may, nha, ver] = await Promise.all([readWeb("may"), readWeb("nha"), readWeb("ver")]);
-  const out = { may: may || {}, nha: nha || null, at: Date.now() };
+  const out = { may: may || {}, nha: nha || null, at: Date.now(), kt: {} };
   const h = (nha && nha.h) || {};
   // máy nhà
   const jobs = [];
+  // (lát 4) gói ĐÃ KẾT THÚC 7 ngày của từng Xeon (web_tomtat 05/11c): chỉ đọc lại /web/kt/m<m> khi mã băm 'kh' trong /web/may đổi
+  for (const [key, v] of Object.entries(out.may)) {
+    if (!v || typeof v !== "object" || !v.kh) continue;
+    const m = Number.isFinite(+v.m) ? +v.m : +String(key).replace(/^m/, "");
+    if (!Number.isFinite(m)) continue;
+    jobs.push(byHash("kt/m" + m, "kt/m" + m, v.kh).then((d) => { out.kt[m] = (d && d.l) || {}; }, () => { const c = cached("kt/m" + m); out.kt[m] = (c && c.l) || {}; }));
+  }
   if (nha) {
     jobs.push(byHash("so", "so", h.so).then((v) => (out.so = v)));
     jobs.push(byHash("cb", "canh_bao", h.cb).then((v) => (out.cb = v || {})));
@@ -113,11 +120,28 @@ function stFromTab(t) {
   return null;
 }
 
+// gói đã kết thúc (web_tomtat 05/11c, /web/kt) -> trạng thái đơn
+export const KT_ST = { xong: "xong", khoa: "ban", kick: "dung", cancel: "dung", dung: "dung", dong: null };
+export const KT_NGAN = { xong: "xong", khoa: "khóa acc", kick: "KICK", cancel: "CANCEL", dung: "dừng", dong: "đóng tay" };
+export const KT_TEXT = { xong: "xong gói", khoa: "acc bị khóa", kick: "khách kick máy", cancel: "khách tiêu vàng/KC (CANCEL)", dung: "đã dừng", dong: "đóng gói tay" };
+// data.kt = { m: { p<id>: {n, c, t, i, g, tg, ...} } } -> Map(tên chuẩn -> gói kết thúc MỚI NHẤT cùng tên)
+export function endedByName(data) {
+  const map = new Map();
+  for (const [m, l] of Object.entries((data && data.kt) || {})) for (const x of Object.values(l || {})) {
+    if (!x || typeof x !== "object" || !x.n || !x.t) continue;
+    const k = normName(x.n), old = map.get(k);
+    if (!old || String(x.t) > String(old.t)) map.set(k, { ...x, m: "M" + m });
+  }
+  return map;
+}
+const ktDay = (t) => String(t || "").slice(0, 10);
+
 // data = kết quả loadAll; live = buildLive(may) -> danh sách đơn thống nhất
 export function buildOrders(data, live) {
   const sua = (data && data.web && data.web.sua) || {};
   const byName = new Map();
   for (const m of (live && live.real) || []) for (const t of m.tabs) if (t.pkg && t.name) byName.set(normName(t.name), { t, m });
+  const ended = endedByName(data);
   const out = [];
   const seen = new Set();
   // đơn cũ (Sheet) đã nhập kiểu mới (có thứ tự dòng 'i') -> so được đơn tự động nào KHÔNG có trong Sheet
@@ -136,6 +160,14 @@ export function buildOrders(data, live) {
       o.live = { k: t.k, g: t.g, tg: t.tg, td: t.td, ngay: t.ngay, health: t.health };
       o.g = t.g; o.tg = t.tg || o.tg; o.m = m.code; o.tab = t.i;
       o.autoSt = stFromTab(t);
+    } else if (ended.has(normName(o.name)) && ktDay(ended.get(normName(o.name)).t) >= (o.day || "")) {
+      // tab đã xóa + clone (hoặc bỏ khỏi web), máy vẫn nhớ gói này kết thúc trong 7 ngày -> tự đổi tình trạng (sửa tay vẫn thắng)
+      const e = ended.get(normName(o.name));
+      o.ended = { c: e.c, t: e.t, m: e.m, r: e.r || "" };
+      o.g = e.g ?? o.g; o.tg = e.tg || o.tg;
+      if (!o.m) o.m = e.m;
+      if (o.tab === "—" || o.tab == null) o.tab = e.i ?? o.tab;
+      o.autoSt = KT_ST[e.c] ?? (o.kq && o.kq.st) ?? null;
     } else if (o.kq) { o.g = o.kq.g ?? o.g; o.tg = o.kq.tg || o.tg; o.autoSt = o.kq.st || null; }
     o.xoa = !!s.xoa || s.st === "bo";
     o.stBo = s.st === "bo";                             // đã xóa (đơn test...) -> ẩn, không tính tiền; "bo" = bản cũ của nút này
@@ -189,7 +221,8 @@ export function cmpTrongNgay(a, b) {
 export function kqCanGhi(orders) {
   const patch = {};
   for (const o of orders) {
-    if (!o.live || !o.autoSt || o.from === "cu") continue;
+    if (!o.autoSt || !(o.live ? o.from !== "cu" : o.ended)) continue;            // thấy trên máy (đơn không phải Sheet) hoặc máy báo đã kết thúc
+    if (o.from === "cu" && o.ended && o.autoSt === "cay") continue;
     const p = o.tg > 0 ? Math.min(100, Math.floor((o.g / o.tg) * 4) * 25) : -1;      // -1 = gói theo ngày / chưa có mục tiêu
     const old = o.kq || {};
     if (old.st !== o.autoSt || (old.p ?? -1) !== p) patch[`sua/${o.id}/kq`] = { st: o.autoSt, p, g: o.g || 0, tg: o.tg || 0, t: Date.now() };
