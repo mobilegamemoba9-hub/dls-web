@@ -17,6 +17,7 @@ const ST = {
   ngung: { l: "Ngưng gói", tone: "off" },
   tao: { l: "Đang tạo acc", tone: "run" },
   nhan: { l: "Đang nhận đơn", tone: "gold" },
+  tay: { l: "Lấy tay", tone: "gold" },
 };
 const MS = { ok: { l: "Ổn", tone: "ok" }, warn: { l: "Có lỗi", tone: "warn" }, err: { l: "Mất tín hiệu", tone: "err" }, none: { l: "Chưa gửi dữ liệu", tone: "off" } };
 const HAS = ["cay", "cho", "dung", "warn"];
@@ -42,7 +43,8 @@ export default function May({ code, live }) {
     const r = L.rows.find((x) => x.tab === i && (x.l === "tam_dung" || x.l === "chay_tiep") && (x.k === "cho" || x.k === "ok"));
     return r && r.t > (m.t || 0) * 1000 ? r.l === "tam_dung" : null;
   };
-  const card = (t) => <TabCard key={t.i} t={t} real={real} nut={nut} gui={L.gui} cho={choTab(t.i)} may={m.code} dm={dungMoi(t.i)} />;
+  const nut7 = nut && m.nut7;                                         // (07/11) máy có nút Lấy tay / việc Sheet
+  const card = (t) => <TabCard key={t.i} t={t} real={real} nut={nut} nut7={nut7} gui={L.gui} cho={choTab(t.i)} may={m.code} dm={dungMoi(t.i)} />;
 
   return (
     <div className="space-y-6">
@@ -92,7 +94,7 @@ export default function May({ code, live }) {
       {real && m.s !== "none" && m.cu && (
         <div className="flex items-start gap-3 rounded-2xl border border-warn/30 bg-warn-soft px-4 py-3 text-[14px] text-warn-ink">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-          <p><span className="font-semibold">Máy chạy web_tomtat bản cũ ({m.ban}).</span> {m.ban === "05/11c" ? "Chưa có nút điều khiển trên web." : "Web chưa tự biết đơn đã xong khi tab bị xóa + clone, chưa có nút điều khiển."} Cài gói <span className="font-semibold">NUT_WEB</span>.</p>
+          <p><span className="font-semibold">Máy chạy web_tomtat bản cũ ({m.ban}).</span> {m.ban === "05/11d" ? <>Chưa có nút Lấy tay / Đã đổi tay việc Sheet. Cài gói <span className="font-semibold">GOI_07-11_NUT_WEB</span>.</> : <>{m.ban === "05/11c" ? "Chưa có nút điều khiển trên web." : "Web chưa tự biết đơn đã xong khi tab bị xóa + clone, chưa có nút điều khiển."} Cài gói <span className="font-semibold">NUT_WEB</span>.</>}</p>
         </div>
       )}
       {m.s === "err" && (
@@ -118,11 +120,13 @@ export default function May({ code, live }) {
           { k: "dung", l: "Tạm dừng", dot: "wait", c: cnt("dung") },
           { k: "nhan", l: "Đang nhận đơn", dot: "gold", c: cnt("nhan") },
           { k: "tao", l: "Đang tạo acc", dot: "run", c: cnt("tao") },
+          { k: "tay", l: "Lấy tay", dot: "gold", c: cnt("tay") },
           { k: "xong", l: "Xong đơn", dot: "ok", c: cnt("xong") },
           { k: "ngung", l: "Ngưng gói", dot: "off", c: cnt("ngung") },
           { k: "off", l: "Tắt", dot: "off", c: cnt("off") },
         ].filter((it) => it.k === "all" || it.c > 0)} />}
 
+      {nut7 && m.sj.length > 0 && <SheetViec sj={m.sj} gui={L.gui} cho={L.rows.filter((r) => r.k === "cho" && r.l === "viec_sheet")} />}
       {real && m.s !== "none" && (L.rows.length > 0 || L.loi) && <LenhPanel L={L} nut={nut} />}
 
       {busy.length > 0 && (
@@ -144,7 +148,7 @@ export default function May({ code, live }) {
   );
 }
 
-function TabCard({ t, real, nut, gui, cho = [], may, dm = null }) {
+function TabCard({ t, real, nut, nut7 = false, gui, cho = [], may, dm = null }) {
   const has = real ? t.pkg && HAS.includes(t.k) : t.k !== "san" && t.k !== "off";
   const st = ST[t.k] || ST.off;
   const pct = !has ? 0 : real ? pctOf(t) : Math.min(100, (t.g / t.tg) * 100);
@@ -167,7 +171,7 @@ function TabCard({ t, real, nut, gui, cho = [], may, dm = null }) {
           <span className="ml-auto min-w-0 truncate text-[13px] text-ink-3" title={right}>{right}</span>
         </div>
         {real && (t.kq || t.health) && <p className={cn("mt-1.5 truncate text-[12.5px]", t.health ? "font-medium text-warn-ink" : "text-ink-3")} title={t.health || t.kq}>{t.health || `Kết quả: ${t.kq}`}</p>}
-        {nut && <NutTab t={t} gui={gui} cho={cho} may={may} dm={dm} />}
+        {nut && <NutTab t={t} gui={gui} cho={cho} may={may} dm={dm} nut7={nut7} />}
       </article>
     );
   }
@@ -200,7 +204,7 @@ function TabCard({ t, real, nut, gui, cho = [], may, dm = null }) {
       </dl>
       {real && t.san > 0 && <p className="mt-2 text-[12.5px] text-ink-3">Acc chưa full sân · tính theo số dư (đã trừ phí sân {fmt(t.san)})</p>}
       {t.health && <p className="mt-3 flex items-center gap-1.5 rounded-lg bg-warn-soft px-2.5 py-1.5 text-[13px] font-medium text-warn-ink"><AlertTriangle className="size-3.5" />{t.health}</p>}
-      {nut && <NutTab t={t} gui={gui} cho={cho} may={may} dm={dm} />}
+      {nut && <NutTab t={t} gui={gui} cho={cho} may={may} dm={dm} nut7={nut7} />}
     </article>
   );
 }
@@ -208,13 +212,15 @@ function TabCard({ t, real, nut, gui, cho = [], may, dm = null }) {
 /* ================= LÁT 5: NÚT ĐIỀU KHIỂN AN TOÀN =================
    Mỗi tab chỉ hiện nút hợp với tình trạng tab (máy vẫn tự kiểm lại trước khi làm).
    Xác nhận: Mở khóa / Đặt lại cờ / Đóng gói / Mở lại gói = bấm 2 lần. Gỡ cờ DIRTY, Ngày bù, Tạm dừng, Chạy tiếp = gõ lại số tab. */
-const SO_TAB = new Set(["go_dirty", "ngay_bu", "tam_dung", "chay_tiep"]);
+const SO_TAB = new Set(["go_dirty", "ngay_bu", "tam_dung", "chay_tiep", "lay_tab"]);
 const NEW_RX = /^NEW\d+$/i;
 const NGAY = [-1, -0.5, 0.5, 1, 2];
 const soNgay = (x) => (x > 0 ? "+" : "−") + String(Math.abs(x)).replace(".", ",");
 
-function tacVu(t, dm = null) {
+function tacVu(t, dm = null, nut7 = false) {
   const out = [];
+  if (nut7 && t.k === "san" && !t.pkg && NEW_RX.test(t.ten)) out.push({ l: "lay_tab" });      // (07/11) tab READY -> lấy tay
+  if (nut7 && t.lt && !t.pkg) out.push({ l: "lay_huy" });
   if (t.kl && !t.pkg) out.push({ l: "mo_khoa" });
   if (t.co === "D") out.push(NEW_RX.test(t.ten) ? { l: "go_dirty" } : { l: "go_dirty", khong: `Tên giả lập "${t.ten || "?"}" chưa phải NEW<số>: chưa xóa + clone lại thì máy sẽ từ chối.` });
   if (t.k === "sach" && !t.co && !t.pkg) out.push({ l: "dat_dirty" });
@@ -227,14 +233,14 @@ function tacVu(t, dm = null) {
   return out;
 }
 
-function useHaiLan(ms = 5000) {
+export function useHaiLan(ms = 5000) {
   const [lan, setLan] = useState(false);
   useEffect(() => { if (!lan) return; const id = setTimeout(() => setLan(false), ms); return () => clearTimeout(id); }, [lan, ms]);
   return [lan, setLan];
 }
 
-function NutTab({ t, gui, cho, may, dm }) {
-  const acts = tacVu(t, dm);
+function NutTab({ t, gui, cho, may, dm, nut7 }) {
+  const acts = tacVu(t, dm, nut7);
   const [mo, setMo] = useState(null);           // lệnh đang mở hộp xác nhận
   const [so, setSo] = useState("");
   const [ngay, setNgay] = useState(1);
@@ -276,6 +282,8 @@ function NutTab({ t, gui, cho, may, dm }) {
           </div>
           {a.khong && <p className="mt-1.5 font-medium text-warn-ink">{a.khong}</p>}
           {a.l === "go_dirty" && !a.khong && <p className="mt-1.5 font-medium text-warn-ink">Chỉ gửi khi CHẮC tab đã xóa + clone lại. Bấm nhầm: dùng "Đặt lại cờ DIRTY".</p>}
+          {a.l === "lay_tab" && <ol className="mt-1.5 list-decimal space-y-0.5 pl-5 text-ink-2"><li>Gửi lệnh, chờ "Đã làm" (≤ 1 phút).</li><li>Trên máy: TẮT tab {t.i} → đổi tên bằng oslink (không bắt đầu NEW) → mở lại → nhập code tay.</li><li>Đổi ý TRƯỚC khi tắt / đổi tên: nút "Hủy lấy tay".</li></ol>}
+          {a.l === "lay_huy" && <p className="mt-1.5 font-medium text-warn-ink">Chỉ gửi khi tab {t.i} CHƯA tắt và CHƯA đổi tên (vẫn ở màn nhập code). Máy kiểm lại, sai thì từ chối.</p>}
           {a.l === "ngay_bu" && (
             <div className="mt-2 flex flex-wrap gap-1.5" role="radiogroup" aria-label="Số ngày bù">
               {NGAY.map((x) => (
@@ -297,11 +305,46 @@ function NutTab({ t, gui, cho, may, dm }) {
   );
 }
 
-function LenhPanel({ L, nut }) {
+/* (07/11) việc ghi Google Sheet bị kẹt "Cần đổi tay" của máy này: bạn sửa dòng đó trong Sheet rồi bấm "Đã đổi tay" (bấm 2 lần) */
+function SheetViec({ sj, gui, cho }) {
+  return (
+    <section aria-label="Việc Sheet cần đổi tay" className="rounded-2xl border border-warn/30 bg-warn-soft/60 px-4 py-3">
+      <h2 className="text-[14px] font-semibold text-warn-ink">Việc Sheet cần đổi tay · {sj.length}</h2>
+      <p className="mt-0.5 text-[12.5px] text-ink-2">Tool không tự ghi được "Đã Xong" vào Google Sheet. Mở Sheet, sửa đúng dòng của đơn, rồi bấm "Đã đổi tay".</p>
+      <ul className="mt-1.5 divide-y divide-warn/20">
+        {sj.map((x) => <SheetRow key={x.j} x={x} gui={gui} dang={cho.some((r) => r.j === x.j)} />)}
+      </ul>
+    </section>
+  );
+}
+
+function SheetRow({ x, gui, dang }) {
+  const [lan, setLan] = useHaiLan();
+  const [tt, setTt] = useState("");
+  const send = async () => {
+    if (!lan) { setLan(true); return; }
+    setLan(false);
+    try { await gui({ l: "viec_sheet", tab: x.tab ?? 0, j: x.j, ai: x.n || "" }); setTt("Đã gửi · máy làm trong ≤ 1 phút"); }
+    catch (e) { setTt("Chưa gửi được: " + ((e && (e.code || e.message)) || "lỗi mạng")); }
+  };
+  return (
+    <li className="flex flex-wrap items-start gap-x-3 gap-y-1 py-2 text-[13px]">
+      <Badge tone="warn" className="text-[11.5px]">{x.k || "?"}</Badge>
+      <span className="min-w-0 break-words font-semibold">{x.n || "(không tên)"}</span>
+      <span className="tnum text-ink-3">{x.tab != null ? `tab ${x.tab} · ` : ""}việc {x.j}{x.t ? ` · ${x.t.slice(5, 16).replace("-", "/")}` : ""}</span>
+      {dang ? <Badge tone="run" dot className="ml-auto text-[11.5px]">Chờ máy</Badge>
+        : !tt && <Button size="sm" variant={lan ? "brand" : "default"} className="ml-auto h-7" onClick={send}>{lan ? "Bấm lần nữa" : "Đã đổi tay"}</Button>}
+      {tt && <span className="ml-auto text-[12.5px] text-ink-2">{tt}</span>}
+      {x.e && <p className="w-full min-w-0 break-words text-[12.5px] text-ink-3">Lỗi: {x.e}</p>}
+    </li>
+  );
+}
+
+export function LenhPanel({ L, nut, title = "Lệnh gửi máy" }) {
   return (
     <section aria-label="Lệnh gửi máy" className="rounded-2xl border border-line bg-white/70 px-4 py-3">
       <div className="flex items-center gap-2">
-        <h2 className="text-[14px] font-semibold">Lệnh gửi máy</h2>
+        <h2 className="text-[14px] font-semibold">{title}</h2>
         {L.conCho && <span className="text-[12px] text-ink-3">· tự xem lại mỗi 30 giây</span>}
         <Button size="sm" variant="ghost" className="ml-auto" onClick={L.docKq}>Xem lại</Button>
       </div>
@@ -327,7 +370,7 @@ function LenhRow({ r, gui, nut }) {
   return (
     <li className="flex flex-wrap items-start gap-x-3 gap-y-1 py-2 text-[13px]">
       <Badge tone={k.tone} dot className="text-[11.5px]">{k.l}</Badge>
-      <span className="font-semibold">{LOAI[r.l]?.l || r.l} · tab {r.tab}{r.l === "ngay_bu" && r.so != null ? ` (${soNgay(+r.so)})` : ""}</span>
+      <span className="font-semibold">{LOAI[r.l]?.l || r.l} · {r.oid != null ? `${r.s ? r.s + " · " : ""}đơn #${r.oid}` : `tab ${r.tab}`}{r.l === "viec_sheet" && r.j != null ? ` · việc Sheet ${r.j}` : ""}{r.l === "ngay_bu" && r.so != null ? ` (${soNgay(+r.so)})` : ""}</span>
       <span className="tnum text-ink-3">{gio}</span>
       {nut && ht && !xong && <Button size="sm" variant={lan ? "brand" : "ghost"} className="ml-auto h-7" onClick={undo}><Undo2 />{lan ? "Bấm lần nữa" : "Hoàn tác"}</Button>}
       {xong && <span className="ml-auto text-[12.5px] text-ink-2">{xong}</span>}

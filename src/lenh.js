@@ -10,7 +10,7 @@ const CHO_TOI_DA_MS = HAN_MS + 3 * 60 * 1000;   // + 1 chu kỳ hỏi 1 phút + 
 const HOI_KQ_MS = 30000;
 const LS = "web3:lenh_cho";
 
-// Mô tả 8 lệnh máy cho phép (trùng danh sách CHO_PHEP trong web_lenh.py)
+// Mô tả lệnh máy cho phép (trùng danh sách CHO_PHEP trong web_lenh.py; 3 lệnh cuối: web_lenh_nha.py của MÁY NHÀ, gửi /web/lenh/m0)
 export const LOAI = {
   mo_khoa: { l: "Mở khóa tab", g: "Cho Agent tạo lại acc mới trên tab NEW bị khóa vì tạo acc lỗi" },
   go_dirty: { l: "Gỡ cờ DIRTY", g: "Báo tab ĐÃ xóa + clone xong, Agent được dùng lại" },
@@ -20,6 +20,14 @@ export const LOAI = {
   mo_lai_goi: { l: "Mở lại gói", g: "Hoàn tác đóng gói: trả gói về trạng thái cũ" },
   tam_dung: { l: "Tạm dừng bot", g: "Bot nhả cần di chuyển và đứng yên (như nút ⏸ Dashboard) - không tắt bot, không tắt LD" },
   chay_tiep: { l: "Tiếp tục bot", g: "Bot chạy tiếp (như nút ▶ Dashboard)" },
+  // (07/11) Xeon - web_lenh 07/11
+  lay_tab: { l: "Lấy tay", g: "Khóa tab READY để bạn tự nhập code (như py lay_tab.py): Tổng đài không gán đơn, Agent không tạo lại. Sau đó bạn TỰ làm trên máy: TẮT tab -> đổi tên bằng oslink (không bắt đầu NEW) -> mở lại -> nhập code tay" },
+  lay_huy: { l: "Hủy lấy tay", g: "Đổi ý: trả tab về READY (như py lay_tab.py --huy). CHỈ dùng khi CHƯA tắt tab và CHƯA đổi tên - máy tự từ chối nếu tab đã tắt / đã đổi tên" },
+  viec_sheet: { l: "Đã đổi tay", g: "Việc ghi Google Sheet bị kẹt: bạn đã TỰ sửa dòng đó trong Sheet -> đánh dấu xong (như py viec_xong.py)" },
+  // (07/11) máy nhà - web_lenh_nha
+  so_dung: { l: "Đã dùng", g: "Acc ĐÃ mang tên số này -> bỏ hẳn số, không cấp lại (như py dat_so.py dung)" },
+  so_tra: { l: "Trả về quỹ", g: "Code CHƯA dùng, không acc nào mang số này -> số về quỹ trống, đơn sau lấy lại (như py dat_so.py tra)" },
+  viec_xong: { l: "Xong việc", g: "Đã xử lý việc cần kiểm của đơn này (như py dat_so.py xong)" },
 };
 export const KQ = {
   cho: { l: "Đang chờ máy", tone: "run" },
@@ -42,6 +50,7 @@ export function newId() {
 export function hoanTac(x) {
   if (!x || x.k !== "ok") return null;
   if (x.l === "go_dirty") return { l: "dat_dirty", tab: x.tab };
+  if (x.l === "lay_tab") return { l: "lay_huy", tab: x.tab };          // chỉ được khi chưa tắt / chưa đổi tên (máy tự kiểm)
   if (x.l === "dong_goi" && x.p != null) return { l: "mo_lai_goi", tab: x.tab, p: x.p };
   if (x.l === "tam_dung") return { l: "chay_tiep", tab: x.tab, p: x.p };
   if (x.l === "chay_tiep" && x.p != null) return { l: "tam_dung", tab: x.tab, p: x.p };
@@ -79,7 +88,8 @@ export function useLenh(m, bat) {
 
   const gui = useCallback(async (d) => {
     const id = newId();
-    const lenh = { l: d.l, tab: d.tab, ...(d.p != null ? { p: d.p } : {}), ...(d.so != null ? { so: d.so } : {}), ai: d.ai || "" };
+    const lenh = { l: d.l, tab: d.tab ?? 0, ...(d.p != null ? { p: d.p } : {}), ...(d.so != null ? { so: d.so } : {}),
+      ...(d.j != null ? { j: d.j } : {}), ...(d.oid != null ? { oid: d.oid } : {}), ...(d.s != null ? { s: d.s } : {}), ...(d.loai != null ? { loai: d.loai } : {}), ai: d.ai || "" };
     await writeLenh(m, id, lenh);
     const x = { id, m, ...lenh, at: Date.now() };
     setCho((o) => { const n = [...o, x]; lsSet(n); return n; });
@@ -93,9 +103,9 @@ export function useLenh(m, bat) {
   for (const x of choM) {
     seen.add(x.id);
     const r = kq[x.id];
-    rows.push(r ? { id: x.id, ...r, p: x.p, so: x.so, t: (r.t || 0) * 1000 || x.at }
-      : { id: x.id, k: now - x.at < CHO_TOI_DA_MS ? "cho" : "mat", l: x.l, tab: x.tab, p: x.p, so: x.so, t: x.at,
-          m: now - x.at < CHO_TOI_DA_MS ? `Máy hỏi lệnh mỗi 1 phút · gửi ${Math.max(0, Math.round((now - x.at) / 1000))} giây trước` : "Máy không báo lại sau 13 phút: Agent tắt / bản cũ / mất mạng?" });
+    rows.push(r ? { id: x.id, ...r, p: x.p, so: x.so, j: x.j, oid: x.oid, s: x.s, t: (r.t || 0) * 1000 || x.at }
+      : { id: x.id, k: now - x.at < CHO_TOI_DA_MS ? "cho" : "mat", l: x.l, tab: x.tab, p: x.p, so: x.so, j: x.j, oid: x.oid, s: x.s, t: x.at,
+          m: now - x.at < CHO_TOI_DA_MS ? `Máy hỏi lệnh mỗi 1 phút · gửi ${Math.max(0, Math.round((now - x.at) / 1000))} giây trước` : (m === 0 ? "Máy nhà không báo lại sau 13 phút: Tổng đài tắt / bản cũ / mất mạng?" : "Máy không báo lại sau 13 phút: Agent tắt / bản cũ / mất mạng?") });
   }
   for (const [id, r] of Object.entries(kq)) if (!seen.has(id) && r && typeof r === "object") rows.push({ id, ...r, t: (r.t || 0) * 1000 });
   rows.sort((a, b) => b.t - a.t);

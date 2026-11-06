@@ -281,7 +281,7 @@ export function homeIssues(data, nowMs = Date.now()) {
     if (n.cho > 0) out.push({ id: "nha-cho", sev: "warn", src: "Tổng đài", t: `${n.cho} code đang chờ gán`, p: "Chưa có tab sẵn sàng ở máy Xeon nào. Code sống khoảng 4 phút." });
   }
   const treo = (data.so && data.so.treo) || [];
-  if (treo.length) out.push({ id: "so-treo", sev: "warn", src: "Tổng đài", t: `${treo.length} số đang TREO`, p: treo.slice(0, 4).map((x) => `${x.s}: ${x.ly}`).join(" · ") + (treo.length > 4 ? ` · +${treo.length - 4}` : "") + ". Kiểm tay rồi dùng dat_so.py dung/tra." });
+  if (treo.length) out.push({ id: "so-treo", sev: "warn", src: "Tổng đài", t: `${treo.length} số đang TREO`, p: treo.slice(0, 4).map((x) => `${x.s}: ${x.ly}`).join(" · ") + (treo.length > 4 ? ` · +${treo.length - 4}` : "") + ". Kiểm tay rồi bấm Đã dùng / Trả về quỹ ở khung Số thứ tự đơn (Tổng quan)." });
   return out;
 }
 

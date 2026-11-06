@@ -1,7 +1,10 @@
 import { ArrowRight, Cpu, Radio, Bot, Inbox, Power, TrendingDown } from "lucide-react";
 import { Card, CardHead, Badge, Dot, CountUp, GoldBar, Gold, CopyBtn, Button, SampleTag, HudPill, cn, TONE } from "../ui.jsx";
 import { machines as mMau, alerts, soon as soonMau, slow as slowMau } from "../data.js";
+import { useState } from "react";
 import { issuesOf, soonOf, slowOf, newToday, ngayText } from "../live.js";
+import { useLenh, LOAI } from "../lenh.js";
+import { LenhPanel, useHaiLan } from "./May.jsx";
 
 export default function TongQuan({ upd, live, data, issues: liveIssues }) {
   const real = !!live;
@@ -162,8 +165,18 @@ export default function TongQuan({ upd, live, data, issues: liveIssues }) {
   );
 }
 
-/* ---------- số thứ tự đơn (máy nhà gửi /web/so) ---------- */
+/* ---------- số thứ tự đơn (máy nhà gửi /web/so) ----------
+   (07/11) nút máy nhà (web_lenh_nha): số TREO -> "Đã dùng" / "Trả về quỹ" (gõ lại đúng tên số); việc cần kiểm -> "Xong việc" (bấm 2 lần) */
+const NHA_SONG_S = 15 * 60;
+const VIEC_LOAI = {
+  A: { l: "A · số đã chốt", g: (x) => `Số ${x.s || "?"} đã chốt DÙNG cho acc này. Tạo gói tay mang số ${x.s || "?"}${x.m != null ? ` trên M${x.m}${x.tab != null ? ` tab ${x.tab}` : ""}` : ""} xong rồi bấm Xong việc.` },
+  B: { l: "B · số đã trả quỹ", g: (x) => `Số cũ ${x.s || "?"} đã về quỹ. Kiểm tay acc${x.m != null ? ` trên M${x.m}${x.tab != null ? ` tab ${x.tab}` : ""}` : ""}: code CHƯA dùng -> bấm Xong việc. Acc ĐÃ nối -> cần cấp số: gõ py dat_so.py cap ${x.oid} trên máy nhà (web không cấp số).` },
+  TRUNG: { l: "Nguy cơ TRÙNG", g: (x) => `Acc có thể mang số ${x.s || "?"} trùng đơn khác. Kiểm 2 acc, đổi tên 1 trong 2 (cần số mới thì báo Claude), rồi bấm Xong việc.` },
+};
+
 function SoCard({ so, nha }) {
+  const nut = !!nha && nha.nut === 1 && Date.now() / 1000 - (nha.t || 0) < NHA_SONG_S;
+  const L = useLenh(nha && so ? 0 : null, nut);
   if (!nha || !so) return (
     <Card>
       <CardHead title="Số thứ tự đơn" />
@@ -171,6 +184,7 @@ function SoCard({ so, nha }) {
     </Card>
   );
   const treo = so.treo || [], viec = so.viec || [];
+  const cho = (pred) => L.rows.filter((r) => r.k === "cho" && pred(r));
   return (
     <Card>
       <CardHead title="Số thứ tự đơn" right={so.giu ? <span className="tnum text-[12.5px] text-ink-3">{so.giu} số đang giữ cho đơn chạy</span> : null} />
@@ -183,19 +197,90 @@ function SoCard({ so, nha }) {
       {!treo.length && !viec.length && !(so.hong || []).length && <p className="px-5 py-3.5 text-[13.5px] text-ok-ink">Không có số nào đang TREO.</p>}
       {treo.length > 0 && (
         <ul className="divide-y divide-line-2">
-          {treo.map((x) => (
-            <li key={x.s + x.oid} className="flex items-start gap-3 px-5 py-3">
-              <Badge tone="warn" dot>TREO</Badge>
-              <p className="min-w-0 text-[13.5px] text-ink-2"><span className="font-semibold text-ink">{x.s}</span> · đơn #{x.oid}: {x.ly}</p>
-            </li>
-          ))}
+          {treo.map((x) => <TreoRow key={x.s + x.oid} x={x} nut={nut} gui={L.gui} cho={cho((r) => r.oid === x.oid && (r.l === "so_dung" || r.l === "so_tra"))} />)}
         </ul>
       )}
-      {viec.length > 0 && <p className="border-t border-line-2 px-5 py-3 text-[13px] text-warn-ink">{viec.length} việc cần kiểm tay (dat_so.py): {viec.slice(0, 5).map((x) => `#${x.oid}${x.loai ? " " + x.loai : ""}`).join(", ")}{viec.length > 5 ? "…" : ""}</p>}
+      {viec.length > 0 && (
+        <div className="border-t border-line-2">
+          <div className="px-5 pt-3 text-[13px] font-semibold text-warn-ink">{viec.length} việc cần kiểm tay</div>
+          <ul className="divide-y divide-line-2">
+            {viec.map((x) => <ViecRow key={x.oid} x={x} nut={nut} gui={L.gui} cho={cho((r) => r.oid === x.oid && r.l === "viec_xong")} />)}
+          </ul>
+        </div>
+      )}
       {(so.hong || []).length > 0 && <p className="border-t border-line-2 px-5 py-3 text-[13px] text-err-ink">Quỹ số bị hỏng: {so.hong.join(", ")}</p>}
+      {!nut && (treo.length > 0 || viec.length > 0) && <p className="border-t border-line-2 px-5 py-2.5 text-[12.5px] text-ink-3">{nha.nut === 1 ? "Máy nhà mất tín hiệu: tạm ẩn nút." : "Chưa có nút: cài gói GOI_07-11_NUT_WEB trên máy nhà. Trong lúc chờ: gõ py dat_so.py trên máy nhà."}</p>}
+      {nut && (L.rows.length > 0 || L.loi) && <div className="border-t border-line-2 p-3"><LenhPanel L={L} nut={nut} title="Lệnh gửi máy nhà" /></div>}
     </Card>
   );
 }
+
+function TreoRow({ x, nut, gui, cho }) {
+  const [mo, setMo] = useState(null);         // so_dung | so_tra
+  const [go, setGo] = useState("");
+  const [tt, setTt] = useState("");
+  const [dang, setDang] = useState(false);
+  const okGo = go.trim().toUpperCase() === String(x.s).toUpperCase();
+  const send = async () => {
+    if (!okGo || dang) return;
+    setDang(true);
+    try { await gui({ l: mo, tab: 0, oid: x.oid, s: x.s, ai: x.s }); setTt(`Đã gửi "${LOAI[mo].l}" ${x.s} · máy nhà làm trong ≤ 1 phút`); setMo(null); setGo(""); }
+    catch (e) { setTt("Chưa gửi được: " + ((e && (e.code || e.message)) || "lỗi mạng")); }
+    finally { setDang(false); }
+  };
+  return (
+    <li className="px-5 py-3">
+      <div className="flex flex-wrap items-start gap-x-3 gap-y-1.5">
+        <Badge tone="warn" dot>TREO</Badge>
+        <p className="min-w-0 flex-1 text-[13.5px] text-ink-2"><span className="font-semibold text-ink">{x.s}</span> · đơn #{x.oid}: {x.ly}</p>
+        {nut && !cho.length && ["so_dung", "so_tra"].map((l) => (
+          <button key={l} type="button" onClick={() => { setMo(mo === l ? null : l); setGo(""); setTt(""); }} aria-expanded={mo === l}
+            className={cn("h-7 cursor-pointer rounded-lg border px-2.5 text-[12.5px] font-medium transition-colors", mo === l ? "border-shell bg-shell text-shell-ink" : "border-line bg-white text-ink-2 hover:bg-wash")}>{LOAI[l].l}</button>
+        ))}
+        {cho.map((r) => <Badge key={r.id} tone="run" dot className="text-[11.5px]">Chờ máy nhà: {LOAI[r.l]?.l}</Badge>)}
+      </div>
+      {tt && !mo && <p className="mt-1.5 text-[12.5px] text-ink-2" role="status">{tt}</p>}
+      {mo && (
+        <div className="mt-2 rounded-xl border border-line bg-wash/60 p-3 text-[13px]">
+          <p className="text-ink-2"><span className="font-semibold text-ink">{LOAI[mo].l} · {x.s}.</span> {LOAI[mo].g}.</p>
+          {mo === "so_tra" && <p className="mt-1.5 font-medium text-warn-ink">Chỉ trả khi CHẮC code chưa dùng (kiểm tab trên Xeon, trạng thái đơn). Trả nhầm mà acc đã mang tên {x.s} thì đơn sau có thể TRÙNG tên. Nếu Xeon báo muộn là code đã dùng, Tổng đài sẽ rút lại số / báo #canh-bao.</p>}
+          <div className="mt-2.5 flex flex-wrap items-center gap-2">
+            <input value={go} onChange={(e) => setGo(e.target.value)} placeholder={`Gõ ${x.s} để xác nhận`} aria-label={`Gõ ${x.s} để xác nhận`} autoCapitalize="characters"
+              className="tnum h-9 w-44 rounded-lg border border-line bg-white px-2.5 text-[14px] uppercase outline-none focus:border-shell" />
+            <Button size="sm" disabled={!okGo || dang} onClick={send}>{dang ? "Đang gửi…" : "Gửi lệnh"}</Button>
+            <button type="button" onClick={() => setMo(null)} className="cursor-pointer text-[12.5px] text-ink-3 hover:text-ink">Thôi</button>
+          </div>
+        </div>
+      )}
+    </li>
+  );
+}
+
+function ViecRow({ x, nut, gui, cho }) {
+  const [lan, setLan] = useHaiLan();
+  const [tt, setTt] = useState("");
+  const L = VIEC_LOAI[x.loai] || { l: x.loai || "?", g: () => "Xử lý tay rồi bấm Xong việc." };
+  const send = async () => {
+    if (!lan) { setLan(true); return; }
+    setLan(false);
+    try { await gui({ l: "viec_xong", tab: 0, oid: x.oid, loai: x.loai || undefined, s: x.s || undefined, ai: x.s || "" }); setTt("Đã gửi · máy nhà làm trong ≤ 1 phút"); }
+    catch (e) { setTt("Chưa gửi được: " + ((e && (e.code || e.message)) || "lỗi mạng")); }
+  };
+  return (
+    <li className="px-5 py-3">
+      <div className="flex flex-wrap items-start gap-x-3 gap-y-1.5">
+        <Badge tone={x.loai === "TRUNG" ? "err" : "warn"}>{L.l}</Badge>
+        <p className="min-w-0 flex-1 text-[13.5px] text-ink-2"><span className="font-semibold text-ink">{x.s || "?"}</span> · đơn #{x.oid}{x.m != null ? ` · M${x.m}${x.tab != null ? ` tab ${x.tab}` : ""}` : ""}</p>
+        {nut && !cho.length && !tt && <Button size="sm" variant={lan ? "brand" : "default"} className="h-7" onClick={send}>{lan ? "Bấm lần nữa" : "Xong việc"}</Button>}
+        {cho.length > 0 && <Badge tone="run" dot className="text-[11.5px]">Chờ máy nhà</Badge>}
+      </div>
+      <p className="mt-1 text-[12.5px] text-ink-2">{L.g(x)}</p>
+      {x.ly && <p className="mt-0.5 break-words text-[12px] text-ink-3">{x.ly}</p>}
+      {tt && <p className="mt-1 text-[12.5px] text-ink-2" role="status">{tt}</p>}
+    </li>
+  );
+}
+
 function SoMau() {
   return (
     <Card>

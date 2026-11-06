@@ -9,9 +9,11 @@ export const KNOWN = [2, 10, 35, 38, 40, 42, 48, 56, 101, 202];
 export const MAT_TIN_HIEU_S = 15 * 60;   // máy gửi ít nhất 10 phút/lần (+2 phút chu kỳ) -> quá 15 phút = mất tín hiệu
 export const CPU_CAO = 85;
 // (lát 4) bản web_tomtat mới nhất. Máy gửi 'b' từ 05/11c; bản cũ không có 'b' (05/11b có tên giả lập 'ten', 05/11 không có)
-export const BAN_MOI = "05/11d";
+export const BAN_MOI = "07/11";
 // (lát 5) bản có nút điều khiển (web_lenh) - máy bản cũ hơn: web không hiện nút
-export const BAN_NUT = ["05/11d"];
+export const BAN_NUT = ["05/11d", "07/11"];
+// (07/11) bản có thêm nút Lấy tay / Hủy lấy tay / Đã đổi tay việc Sheet
+export const BAN_NUT7 = ["07/11"];
 
 const num = (v) => (Number.isFinite(+v) ? +v : 0);
 
@@ -32,6 +34,7 @@ const bdMs = (bd) => { const t = bd ? new Date(bd.replace(" ", "T")).getTime() :
 
 function tabOf(x, code, nowMs) {
   let k = K[x.s] || "off", health = x.e || "", nghi = false;
+  if (x.lt === 1) { k = "tay"; health = ""; }                    // (07/11) tab READY đã khóa bằng "Lấy tay": không phải lỗi
   const ma = /thoát mã (\d+)/.exec(health);
   if (x.s === "loi" && ma && ma[1] === "90") { k = "cho"; health = ""; nghi = true; }
   else if (ma && MA[ma[1]]) health = MA[ma[1]];
@@ -57,6 +60,7 @@ function tabOf(x, code, nowMs) {
     ps: x.ps === 1,                             // gói đang hiện là gói ĐÃ DỪNG (stopped)
     co: x.co || "",                             // cờ tab: D = DIRTY (xong đơn chưa dọn), R = đang xóa + clone
     kl: x.kl === 1,                             // tab NEW khóa vì tạo acc lỗi -> mở khóa được
+    lt: x.lt === 1,                             // (07/11) tab đã khóa bằng "Lấy tay" (lay_tab) -> nút Hủy lấy tay
   };
 }
 
@@ -95,7 +99,8 @@ export function buildLive(raw, nowMs = Date.now()) {
       hb: tuoi(age), age, t: num(v.t),
       cay: c("cay"), cho: c("cho"), dung: c("dung"), san: c("san"), sach: c("sach"), loi: loi.length, tat: c("off"),
       kho: v.kho || {}, g7: num(v.g7), k7: num(v.k7), moc: v.moc || "", tabs, real: true,
-      ban, cu: ban !== BAN_MOI, kt: !!v.kh, nut: BAN_NUT.includes(ban),
+      ban, cu: ban !== BAN_MOI, kt: !!v.kh, nut: BAN_NUT.includes(ban), nut7: BAN_NUT7.includes(ban),
+      sj: Array.isArray(v.sj) ? v.sj.filter((x) => x && Number.isFinite(+x.j)) : [],   // (07/11) việc Sheet kẹt "Cần đổi tay"
     };
   });
   return { machines, real: machines.filter((x) => x.s !== "none"), at: nowMs };
@@ -131,6 +136,7 @@ export function issuesOf(live) {
       const p = loi.slice(0, 4).map((t) => `Tab ${t.i}: ${t.health || "lỗi"}`).join(" · ") + (loi.length > 4 ? ` · +${loi.length - 4} tab` : "");
       out.push({ id: m.code + "-tab", sev: "warn", src: "Máy", t: `${m.code} có ${loi.length} tab cần xem`, time: m.hb + " trước", p, go: m.code });
     }
+    if (m.sj && m.sj.length) out.push({ id: m.code + "-sj", sev: "warn", src: "Sheet", t: `${m.code} có ${m.sj.length} việc Sheet cần đổi tay`, time: m.hb + " trước", p: m.sj.slice(0, 3).map((x) => `${x.k} ${x.n}`).join(" · ") + (m.sj.length > 3 ? ` · +${m.sj.length - 3}` : "") + ". Sửa dòng đó trong Sheet rồi bấm \"Đã đổi tay\" ở trang máy.", go: m.code });
     if (m.cpu != null && m.cpu >= CPU_CAO) out.push({ id: m.code + "-cpu", sev: "warn", src: "Máy", t: `${m.code} CPU ${m.cpu}%`, time: m.hb + " trước", p: "Cao bất thường, giả lập có thể chậm/lag.", go: m.code });
   }
   const R = { err: 0, warn: 1 };
