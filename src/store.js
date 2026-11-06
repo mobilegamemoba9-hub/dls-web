@@ -172,6 +172,7 @@ export function buildOrders(data, live) {
     o.xoa = !!s.xoa || s.st === "bo";
     o.stBo = s.st === "bo";                             // đã xóa (đơn test...) -> ẩn, không tính tiền; "bo" = bản cũ của nút này
     o.han = s.han || "";                                          // ngày đến hạn chọn tay (đơn 0đ: khách gửi lại / tặng)
+    o.san = Math.max(0, Math.min(60, Math.round(+s.san || 0)));   // (06/11) cộng thêm ngày nâng sân (đơn chưa full sân "60-7K")
     o.st = (s.st && s.st !== "bo" ? s.st : null) || o.autoSt || o.st || "cay";
     o.kenh = kenhOf(o.name, o.src);
     out.push(o);
@@ -189,16 +190,38 @@ export function buildOrders(data, live) {
   for (const [id, x] of Object.entries((data && data.web && data.web.don_tay) || {})) {
     if (!x || typeof x !== "object" || !x.day) continue;
     seen.add(normName(x.n));
-    finish({ id, from: "tay", name: x.n || "", src: "Tay", m: x.m || mayFromName(x.n), tab: x.tab ?? "—", day: x.day, start: dmy(x.day), g: 0, tg: 0, st: "cay", note: x.note || "", t: x.t });
+    finish({ id, from: "tay", auto: !!x.auto, name: x.n || "", src: x.auto ? srcFromName(x.n) : "Tay", m: x.m || mayFromName(x.n), tab: x.tab ?? "—", day: x.day, start: dmy(x.day), g: 0, tg: 0, st: "cay", note: x.note || "", t: x.t });
   }
   // 3) đơn cũ nhập 1 lần từ Sheet (bỏ đơn đã có ở 1/2 cùng tên)
   for (const [id, x] of Object.entries((data && data.web && data.web.don_cu) || {})) {
     if (!x || typeof x !== "object" || !x.d) continue;
     if (seen.has(normName(x.n))) continue;
+    seen.add(normName(x.n));
     finish({ id, from: "cu", name: x.n || "", src: srcFromName(x.n), m: mayFromName(x.n), tab: "—", day: x.d, start: dmy(x.d), g: 0, tg: 0,
       st: stFromSheet(x.b), rev: x.r || "", note: x.c || "", i: x.i });
   }
+  // 4) (06/11) gói NGL/IML ĐANG CHẠY trên máy mà không có đơn nào cùng tên (code nhận qua Messenger, tạo gói tay trên Xeon)
+  //    -> hiện luôn + main.jsx tự lưu 1 lần vào /web/don_tay (auto: 1) để nhớ cả khi tab đã xóa + clone.
+  for (const [k, { t, m }] of byName) {
+    if (seen.has(k) || !TU_THEM.test(String(t.name).trim())) continue;
+    seen.add(k);
+    const day = /^\d{4}-\d{2}-\d{2}/.test(t.bd || "") ? t.bd.slice(0, 10) : ymd(Date.now());
+    finish({ id: idMay(t.name), from: "may", auto: true, name: t.name, src: srcFromName(t.name), m: m.code, tab: t.i, day, start: dmy(day), g: 0, tg: 0, st: "cay" });
+  }
   return out.sort((a, b) => (a.day === b.day ? cmpTrongNgay(a, b) : a.day < b.day ? -1 : 1));
+}
+const TU_THEM = /^(?:GL\.|KICK\.?)?(?:NGL|IML)\d+/i;
+// id cố định theo tên gói (FNV-1a) -> sửa giá/ghi chú trước và sau khi lưu vào don_tay vẫn cùng 1 id
+export function idMay(name) {
+  let h = 0x811c9dc5;
+  for (const ch of normName(name)) { h ^= ch.codePointAt(0); h = Math.imul(h, 0x01000193) >>> 0; }
+  return "a" + h.toString(36);
+}
+// đơn tự thêm từ máy chưa lưu -> patch /web/don_tay/<id>
+export function mayCanGhi(orders) {
+  const patch = {};
+  for (const o of orders) if (o.from === "may") patch[`don_tay/${o.id}`] = { n: o.name.slice(0, 100), day: o.day, m: o.m, tab: o.tab, t: Math.floor(Date.now() / 1000), auto: 1, note: "" };
+  return patch;
 }
 
 // Thứ tự trong 1 ngày giống Google Sheet: Khách VN -> NGL (theo số) -> IML (theo số) -> đơn tay / đơn lạ (GL.NGL, GL.IML, còn lại)

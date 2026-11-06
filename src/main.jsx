@@ -12,7 +12,7 @@ import DoanhThu from "./pages/DoanhThu.jsx";
 import CanhBao from "./pages/CanhBao.jsx";
 import { Gate, UidRow, logout } from "./auth.jsx";
 import { configured } from "./firebase.js";
-import { loadAll, save, localWeb, buildOrders, kqCanGhi, homeIssues, tdAlerts } from "./store.js";
+import { loadAll, save, localWeb, buildOrders, kqCanGhi, mayCanGhi, homeIssues, tdAlerts } from "./store.js";
 import { buildLive, issuesOf } from "./live.js";
 
 const NAV = [
@@ -92,7 +92,7 @@ function App({ user }) {
   const kqDone = useRef("");
   useEffect(() => {
     if (!data) return;
-    const p = kqCanGhi(orders);
+    const p = { ...kqCanGhi(orders), ...mayCanGhi(orders) };      // + (06/11) lưu đơn NGL/IML tự thấy trên máy vào don_tay
     const sig = JSON.stringify(Object.keys(p).sort().map((k) => [k, p[k].st, p[k].p]));
     if (!Object.keys(p).length || sig === kqDone.current) return;
     kqDone.current = sig;

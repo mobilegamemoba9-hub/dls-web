@@ -25,6 +25,17 @@ function hanTay(o, h) {
   const now = new Date(); const n = Math.round((t - new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()) / DAY);
   return { ...r, left: n < 0 ? `Trễ ${-n} ngày` : n === 0 ? "Hôm nay" : `${n} ngày`, ls: n < 0 ? "late" : "ok" };
 }
+// (06/11) cộng ngày nâng sân cho đơn chưa full sân (tên có "-…K", vd 60-7K): đến hạn = theo giá + N ngày
+const CHUA_FULL = /\d\s*-\s*\d+(?:[.,]\d+)?\s*K/i;
+function congSan(o, h) {
+  if (!o.san || o.han || h.dueT == null) return h;
+  const dueT = h.dueT + o.san * DAY;
+  const d = new Date(dueT);
+  const r = { ...h, dueT, due: `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}` };
+  if (["xong", "ban"].includes(o.st)) return r;
+  const now = new Date(); const n = Math.round((dueT - new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()) / DAY);
+  return { ...r, left: n < 0 ? `Trễ ${-n} ngày` : n === 0 ? "Hôm nay" : `${n} ngày`, ls: n < 0 ? "late" : "ok" };
+}
 const TODAY = ymd(Date.now());
 const ddmm = (day) => { const [, m, d] = day.split("-"); return `${d}/${m}`; };
 
@@ -37,7 +48,7 @@ function useWide() {
 
 export default function Don({ orders: raw, prices, onSave, ready, reporting }) {
   const orders = useMemo(() => raw.map((o) => {
-    const h = hanTay(o, tinhHan(o, prices));
+    const h = hanTay(o, congSan(o, tinhHan(o, prices)));
     if (o.st === "dung") return { ...o, ...h, left: "Đã dừng", ls: "none" };
     if (o.st === "noi" || o.st === "kiem") return { ...o, ...h, left: STATUS[o.st].l, ls: o.st === "kiem" ? "late" : "none" };
     return { ...o, ...h };
@@ -231,12 +242,25 @@ function DelBtn({ x, update }) {
 function DueCell({ x, prices, update }) {
   const p = x.rev ? prices.find((q) => q.v === x.rev) : null;
   const tay = !!x.han || (x.rev && (!p || p.d == null));
-  if (!tay) return x.due;
+  if (!tay) return CHUA_FULL.test(x.name) || x.san ? <span className="inline-flex flex-wrap items-center gap-1.5">{x.due}<SanDays x={x} update={update} /></span> : x.due;
   return (
     <span className="inline-flex items-center gap-1">
       <input type="date" value={x.han || ""} onChange={(e) => update(x.id, { han: e.target.value })} aria-label={`Ngày đến hạn đơn ${x.name}`}
         title="Giá này không có số ngày cày: chọn ngày đến hạn tay" className={cn("tnum h-7 w-[124px] rounded-lg border px-1.5 text-[12.5px]", x.han ? "border-line bg-white" : "border-dashed border-warn/60 bg-warn-soft text-warn-ink")} />
     </span>
+  );
+}
+/* + ngày nâng sân: số ngày cộng vào ngày đến hạn (sua/<id>/san) */
+function SanDays({ x, update }) {
+  const [v, setV] = useState(x.san ? String(x.san) : "");
+  useEffect(() => { setV(x.san ? String(x.san) : ""); }, [x.san]);
+  const luu = () => { const n = Math.max(0, Math.min(60, parseInt(v, 10) || 0)); if (n !== (x.san || 0)) update(x.id, { san: n || "" }); setV(n ? String(n) : ""); };
+  const can = !x.san && x.st === "cay" && CHUA_FULL.test(x.name);
+  return (
+    <label title="Đơn chưa full sân: cộng thêm số ngày nâng sân vào ngày đến hạn" className={cn("inline-flex h-6 items-center gap-0.5 rounded-md border px-1 text-[11.5px] font-semibold", can ? "border-dashed border-warn/60 bg-warn-soft text-warn-ink" : "border-line bg-white text-ink-2")}>
+      +<input inputMode="numeric" value={v} onChange={(e) => setV(e.target.value.replace(/\D/g, "").slice(0, 2))} onBlur={luu} onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+        placeholder="0" aria-label={`Số ngày nâng sân cộng thêm cho đơn ${x.name}`} className="tnum w-5 bg-transparent text-center focus:outline-none" />ngày sân
+    </label>
   );
 }
 function QuickXong({ x, update }) {
@@ -254,6 +278,7 @@ function Where({ x }) {
   return (
     <>
       <span className="tnum text-[12.5px] text-ink-3">{t || (x.from === "cu" ? "đơn cũ (Sheet)" : "—")}{x.ly ? ` · ${x.ly}` : ""}</span>
+      {x.auto && !x.xoa && <span title="Không có đơn từ Discord / Sheet: web tự thêm vì thấy gói này đang chạy trên máy (code nhận qua Messenger). Nhập giá như đơn thường; nhầm thì bấm thùng rác." className="rounded-md bg-off-soft px-1.5 py-0.5 text-[11.5px] font-semibold whitespace-nowrap text-ink-2">Tự thêm từ máy</span>}
       {x.ngoaiSheet && !x.xoa && <span title="Tổng đài đã nối code và tạo gói cho đơn này, nhưng Sheet BACKUP 2026 không có dòng nào cùng tên. Đơn test / làm lại tay: bấm thùng rác để xóa khỏi web." className="rounded-md bg-warn-soft px-1.5 py-0.5 text-[11.5px] font-semibold whitespace-nowrap text-warn-ink">Không có trong Sheet</span>}
     </>
   );
