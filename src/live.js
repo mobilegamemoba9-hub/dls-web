@@ -25,7 +25,7 @@ export function tuoi(s) {
 }
 
 // trạng thái tab của web_tomtat -> khóa trang Máy
-const K = { cay: "cay", cho: "cho", dung: "dung", loi: "warn", xong: "xong", ngung: "ngung", san: "san", sach: "sach", tao: "tao", nhan: "nhan", tat: "off" };
+const K = { cay: "cay", cho: "cho", dung: "dung", loi: "warn", xong: "xong", ngung: "ngung", san: "san", sach: "sach", dp: "dp", tao: "tao", nhan: "nhan", tat: "off" };
 
 // Mã thoát của bot (web_tomtat cắt lỗi còn 60 ký tự) -> chữ dễ đọc. 90 = ngủ đêm vì đủ 100 trận: KHÔNG phải lỗi.
 const MA = { 92: "Acc bị khóa · bot đã dừng", 96: "Vàng/KC giảm (khách tiêu?) · bot đã dừng" };

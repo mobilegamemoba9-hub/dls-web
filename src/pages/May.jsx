@@ -10,6 +10,7 @@ const ST = {
   cho: { l: "Full 100 trận", tone: "wait" },
   san: { l: "Sẵn sàng", tone: "ok" },
   sach: { l: "Tab sạch", tone: "ok" },
+  dp: { l: "Dự phòng", tone: "off" },
   warn: { l: "Cần xem", tone: "warn" },
   off: { l: "Tắt", tone: "off" },
   dung: { l: "Tạm dừng", tone: "wait" },
@@ -120,6 +121,7 @@ export default function May({ code, live }) {
           { k: "dung", l: "Tạm dừng", dot: "wait", c: cnt("dung") },
           { k: "nhan", l: "Đang nhận đơn", dot: "gold", c: cnt("nhan") },
           { k: "tao", l: "Đang tạo acc", dot: "run", c: cnt("tao") },
+          { k: "dp", l: "Dự phòng", dot: "off", c: cnt("dp") },
           { k: "tay", l: "Lấy tay", dot: "gold", c: cnt("tay") },
           { k: "xong", l: "Xong đơn", dot: "ok", c: cnt("xong") },
           { k: "ngung", l: "Ngưng gói", dot: "off", c: cnt("ngung") },
@@ -162,7 +164,7 @@ function TabCard({ t, real, nut, nut7 = false, gui, cho = [], may, dm = null }) 
 
   if (!has) {
     const right = !real ? (t.k === "san" ? t.name : "Không có gói")
-      : t.pkg ? t.name : t.k === "sach" ? (t.ten || "Chờ Agent dùng") : t.k === "san" ? (t.ten ? `${t.ten} · chờ đơn` : "Chờ đơn") : t.ten && t.k === "off" ? t.ten : t.k === "tao" ? "Đang chuẩn bị acc mới" : t.k === "nhan" ? "Đơn vừa gán" : "Không có gói";
+      : t.pkg ? t.name : t.k === "sach" ? (t.ten || "Chờ Agent dùng") : t.k === "dp" ? (t.ten ? `${t.ten} · game chết, chờ dùng lại` : "Game chết, chờ dùng lại") : t.k === "san" ? (t.ten ? `${t.ten} · chờ đơn` : "Chờ đơn") : t.ten && t.k === "off" ? t.ten : t.k === "tao" ? "Đang chuẩn bị acc mới" : t.k === "nhan" ? "Đơn vừa gán" : "Không có gói";
     return (
       <article className={cn("rounded-2xl border px-4 py-3", t.k === "san" ? "border-ok/25 bg-ok-soft/60" : t.k === "sach" ? "border-ok/20 bg-ok-soft/25" : t.k === "warn" ? "border-warn/40 bg-warn-soft/40" : "border-line-2 bg-white/60")}>
         <div className="flex items-center gap-3">
