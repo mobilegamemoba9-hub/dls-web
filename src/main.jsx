@@ -22,7 +22,7 @@ const NAV = [
   { k: "doanh-thu", l: "Doanh thu", I: BarChart3 },
   { k: "canh-bao", l: "Cảnh báo", I: BellRing },
 ];
-const MOBILE = ["tong-quan", "don", "doanh-thu", "canh-bao"];
+const MOBILE = ["tong-quan", "may", "don", "doanh-thu", "canh-bao"];   // (09/11) thêm Máy cho điện thoại
 const hm = (d) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 
 function useHash() {
@@ -196,13 +196,13 @@ function App({ user }) {
         </main>
       </div>
 
-      {/* ---- 4 nút dưới (điện thoại) ---- */}
-      <nav aria-label="Trang" className="glass fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-white/70 pr-[max(8px,env(safe-area-inset-right,0px))] pl-[max(8px,env(safe-area-inset-left,0px))] pt-1.5 pb-[max(env(safe-area-inset-bottom),0.4rem)] shadow-[0_-8px_24px_-12px_oklch(0.3_0.04_168/0.18)] lg:hidden">
+      {/* ---- 5 nút dưới (điện thoại) ---- */}
+      <nav aria-label="Trang" className="glass fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-white/70 pr-[max(8px,env(safe-area-inset-right,0px))] pl-[max(8px,env(safe-area-inset-left,0px))] pt-1.5 pb-[max(env(safe-area-inset-bottom),0.4rem)] shadow-[0_-8px_24px_-12px_oklch(0.3_0.04_168/0.18)] lg:hidden">
         {NAV.filter((n) => MOBILE.includes(n.k)).map(({ k, l, I }) => {
-          const on = v === k || (k === "tong-quan" && v === "may");
+          const on = v === k;
           return (
-            <a key={k} href={`#${k}`} aria-current={on ? "page" : undefined} className={cn("relative flex flex-col items-center gap-0.5 rounded-xl py-1.5 text-[11.5px] font-medium", on ? "text-[var(--sh-text)]" : "text-ink-3")}>
-              <span className={cn("grid h-7 w-12 place-items-center rounded-full transition-colors", on && "bg-[var(--sh-soft)]")}><I className="size-[19px]" strokeWidth={on ? 2.2 : 1.9} /></span>
+            <a key={k} href={`#${k}`} aria-current={on ? "page" : undefined} className={cn("relative flex min-w-0 flex-col items-center gap-0.5 rounded-xl py-1.5 text-[11px] font-medium whitespace-nowrap", on ? "text-[var(--sh-text)]" : "text-ink-3")}>
+              <span className={cn("grid h-7 w-11 place-items-center rounded-full transition-colors", on && "bg-[var(--sh-soft)]")}><I className="size-[19px]" strokeWidth={on ? 2.2 : 1.9} /></span>
               {l}
               {k === "canh-bao" && badge > 0 && <span className="tnum absolute top-0.5 right-[calc(50%-22px)] grid h-4 min-w-4 place-items-center rounded-full bg-err px-1 text-[10px] font-semibold text-white">{badge}</span>}
             </a>
