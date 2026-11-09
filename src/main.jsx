@@ -12,7 +12,7 @@ import DoanhThu from "./pages/DoanhThu.jsx";
 import CanhBao from "./pages/CanhBao.jsx";
 import { Gate, UidRow, logout } from "./auth.jsx";
 import { configured } from "./firebase.js";
-import { loadAll, save, localWeb, buildOrders, kqCanGhi, mayCanGhi, homeIssues, tdAlerts } from "./store.js";
+import { loadAll, save, localWeb, buildOrders, kqCanGhi, mayCanGhi, homeIssues, tdAlerts, daDoc } from "./store.js";
 import { buildLive, issuesOf } from "./live.js";
 
 const NAV = [
@@ -75,9 +75,18 @@ function App({ user }) {
   const orders = useMemo(() => (data ? buildOrders(data, live) : []), [data, live]);
   const prices = useMemo(() => (data && giaOf(data.web.gia)) || initialPrices, [data]);
   const rate = (data && data.web.cfg && +data.web.cfg.rate) || 25800;
+  // (09/11) màu đối tác đổi được (/web/cfg/mau) -> biến màu --color-s-ngl / -iml / -vn (biểu đồ + nhãn nguồn)
+  const mauKey = JSON.stringify((data && data.web.cfg && data.web.cfg.mau) || {});
+  useEffect(() => {
+    const m = JSON.parse(mauKey);
+    for (const k of ["ngl", "iml", "vn"]) {
+      if (/^#[0-9a-f]{6}$/i.test(m[k] || "")) document.documentElement.style.setProperty(`--color-s-${k}`, m[k]);
+      else document.documentElement.style.removeProperty(`--color-s-${k}`);
+    }
+  }, [mauKey]);
   const reporting = useMemo(() => new Set(((live && live.real) || []).filter((m) => m.s !== "err").map((m) => m.code.toUpperCase())), [live]);
   const issues = useMemo(() => (live ? [...homeIssues(data), ...issuesOf(live)].sort((a, b) => (a.sev === b.sev ? 0 : a.sev === "err" ? -1 : b.sev === "err" ? 1 : 0)) : []), [live, data]);
-  const badge = live ? issues.length : alertsData.filter((a) => a.sev !== "info").length;
+  const badge = live ? issues.filter((a) => !daDoc(data, a)).length : alertsData.filter((a) => a.sev !== "info").length;   // (09/11) chỉ đếm việc chưa đánh dấu đã đọc
 
   // lưu chỗ bạn sửa rồi vẽ lại ngay (không đọc lại Firebase)
   const onSave = async (patch) => {
@@ -112,7 +121,7 @@ function App({ user }) {
     may: <May code={arg} live={live} />,
     don: <Don orders={orders} prices={prices} onSave={onSave} ready={!!data} reporting={reporting} />,
     "doanh-thu": <DoanhThu rate={rate} setRate={setRate} prices={prices} setPrices={setPrices} orders={orders} data={data} onSave={onSave} />,
-    "canh-bao": <CanhBao live={live} data={data} issues={issues} />,
+    "canh-bao": <CanhBao live={live} data={data} issues={issues} onSave={onSave} />,
   }[v];
 
   return (

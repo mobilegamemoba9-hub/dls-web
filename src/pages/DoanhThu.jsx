@@ -12,6 +12,8 @@ const SERIES = [
   { k: "vn", l: "Khách VN", c: "var(--color-s-vn)", note: "tiền Việt" },
 ];
 const KEY = { NGL: "ngl", IML: "iml", "Khách VN": "vn" };
+// (09/11) màu đối tác đổi được: /web/cfg/mau/<ngl|iml|vn> = "#rrggbb" (main.jsx gắn vào biến màu --color-s-*)
+export const MAU_GOC = { ngl: "#4759B7", iml: "#00A19D", vn: "#EAB02F" };
 const tr = (n) => (n >= 10 ? n.toFixed(1) : n.toFixed(2)).replace(".", ",").replace(/,?0+$/, (m) => (m.startsWith(",") ? "" : m));
 const usdTxt = (n) => String(+n.toFixed(2)).replace(".", ",");
 
@@ -52,6 +54,7 @@ export default function DoanhThu({ rate, setRate, prices, setPrices, orders = []
   const sumAll = mData.reduce((a, r) => a + total(r), 0);
   const sumSeries = (k) => data0.reduce((a, r) => a + r[k], 0);
   const chuaGia = orders.filter((x) => !x.rev && !x.xoa && x.st !== "ban").length;
+  const mau = (data && data.web && data.web.cfg && data.web.cfg.mau) || {};
 
   const commitRate = () => { const n = parseInt(rateTxt.replace(/\D/g, "")); if (n > 1000) { if (n !== rate) setRate(n); setRateTxt(fmt(n)); } else setRateTxt(fmt(rate)); };
 
@@ -97,7 +100,7 @@ export default function DoanhThu({ rate, setRate, prices, setPrices, orders = []
         <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 px-5 sm:px-6">
           {SERIES.map((s) => (
             <div key={s.k} className="flex items-center gap-2 text-[13px]">
-              <span className="size-2.5 rounded-[3px]" style={{ background: s.c }} />
+              <MauDot k={s.k} l={s.l} mau={mau} onSave={onSave} />
               <span className="font-semibold">{s.l}</span>
               <span className="tnum text-ink-2">{tr(sumSeries(s.k))} tr</span>
               <span className="hidden text-ink-3 sm:inline">· {s.note}</span>
@@ -215,6 +218,23 @@ function CopyBox({ text, label = "Chép bảng" }) {
   );
 }
 
+/* ô màu đối tác: bấm để đổi (áp cho biểu đồ + nhãn NGL / IML / Khách VN ở trang Đơn) */
+function MauDot({ k, l, mau, onSave }) {
+  const v = /^#[0-9a-f]{6}$/i.test(mau[k] || "") ? mau[k] : MAU_GOC[k];
+  const [x, setX] = useState(v);
+  useEffect(() => setX(v), [v]);
+  const hen = useRef(0);
+  const luu = (c) => { if (/^#[0-9a-f]{6}$/i.test(c) && c.toLowerCase() !== v.toLowerCase()) onSave({ [`cfg/mau/${k}`]: c.toLowerCase() === MAU_GOC[k].toLowerCase() ? null : c }).catch(() => {}); };
+  const doi = (c) => { setX(c); document.documentElement.style.setProperty(`--color-s-${k}`, c); clearTimeout(hen.current); hen.current = setTimeout(() => luu(c), 700); };   // kéo chọn màu: lưu khi dừng 0,7 giây
+  return (
+    <label title={`Đổi màu ${l}`} className="relative grid size-5 shrink-0 cursor-pointer place-items-center rounded-md ring-1 ring-ink/10 hover:ring-ink/30">
+      <span className="size-3 rounded-[3px]" style={{ background: `var(--color-s-${k})` }} />
+      <input type="color" value={x} onChange={(e) => doi(e.target.value)}
+        aria-label={`Màu nhãn ${l}`} className="absolute inset-0 size-full cursor-pointer opacity-0" />
+    </label>
+  );
+}
+
 /* ---------- công nợ theo kỳ (lưu /web/cong_no/<ngl|iml>: tu = ngày bắt đầu kỳ đang mở, ls = các kỳ đã trả) ---------- */
 const money = (cur, n) => (cur === "usd" ? `${usdTxt(n)}$` : `${fmt(n)}đ`);
 const moneyEn = (cur, n) => (cur === "usd" ? `${+n.toFixed(2)}$` : `${fmt(n)} VND`);
@@ -227,7 +247,7 @@ function DebtSection({ rate, orders, congNo, onSave }) {
     <section aria-labelledby="cn-h" className="space-y-3">
       <div>
         <h2 id="cn-h" className="text-[19px] font-bold tracking-[-0.01em]">Công nợ đối tác</h2>
-        <p className="mt-1 max-w-[70ch] text-[13.5px] text-ink-2">Tính theo <b>kỳ</b>: từ ngày bắt đầu kỳ đến hôm nay. Mỗi đơn của đối tác đã có giá ở trang Đơn được cộng vào kỳ đang mở. Khi đối tác chuyển tiền xong, bấm <b>Đánh dấu đã thanh toán</b> để đóng kỳ, kỳ mới tự bắt đầu từ ngày mai.</p>
+        <p className="mt-1 max-w-[70ch] text-[13.5px] text-ink-2">Tính theo <b>kỳ</b>: từ ngày bắt đầu kỳ đến ngày bạn chọn (mặc định hôm nay). Đối tác trả tới ngày nào thì chọn <b>đến</b> ngày đó rồi bấm <b>Đánh dấu đã thanh toán</b>: chỉ các đơn trong kỳ đó được đóng, kỳ mới bắt đầu từ ngày hôm sau.</p>
       </div>
       <div className="grid gap-6 lg:grid-cols-2">{DOI_TAC.map((d) => <DebtCard key={d.k} d={d} rate={rate} orders={orders} cn={congNo[d.k] || {}} onSave={onSave} />)}</div>
     </section>
@@ -236,15 +256,18 @@ function DebtSection({ rate, orders, congNo, onSave }) {
 function DebtCard({ d, rate, orders, cn, onSave }) {
   const today = ymd(Date.now());
   const from = cn.tu || addDay(today, -6);
+  const [denTay, setDenTay] = useState("");                     // (09/11) ngày cuối kỳ chọn tay (trống = hôm nay)
+  const den = denTay && denTay >= from && denTay <= today ? denTay : today;
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
-  const inKy = orders.filter((x) => !x.xoa && x.kenh === d.kenh && x.src !== "Tay" && x.day >= from && x.day <= today);
+  const inKy = orders.filter((x) => !x.xoa && x.kenh === d.kenh && x.src !== "Tay" && x.day >= from && x.day <= den);
+  const sau = den < today ? orders.filter((x) => !x.xoa && x.kenh === d.kenh && x.src !== "Tay" && x.rev && x.day > den).length : 0;
   const priced = inKy.filter((x) => x.rev).map((x) => { const t = tien(x.rev); return [x.name, d.cur === "usd" ? t.usd + t.vnd / rate : t.vnd + t.usd * rate]; });
   const miss = inKy.filter((x) => !x.rev && x.st !== "ban").length;
   const total = priced.reduce((a, [, v]) => a + v, 0);
   const hist = Object.entries(cn.ls || {}).map(([id, h]) => ({ id, ...h })).sort((a, b) => (a.den < b.den ? 1 : -1));
   const text = [
-    `${d.n} - orders ${d2(from)} to ${d2(today)}`,
+    `${d.n} - orders ${d2(from)} to ${d2(den)}`,
     ...priced.map(([n, v], i) => `${i + 1}. ${n}  ${moneyEn(d.cur, v)}`),
     `Total: ${priced.length} orders = ${moneyEn(d.cur, total)}`,
   ].join("\n");
@@ -252,8 +275,8 @@ function DebtCard({ d, rate, orders, cn, onSave }) {
     if (!confirm) { setConfirm(true); return; }
     setBusy(true);
     try {
-      await onSave({ [`cong_no/${d.k}/ls/k${Date.now()}`]: { tu: from, den: today, n: priced.length, amt: +total.toFixed(2), paid: today }, [`cong_no/${d.k}/tu`]: addDay(today, 1) });
-      setConfirm(false);
+      await onSave({ [`cong_no/${d.k}/ls/k${Date.now()}`]: { tu: from, den, n: priced.length, amt: +total.toFixed(2), paid: today }, [`cong_no/${d.k}/tu`]: addDay(den, 1) });
+      setConfirm(false); setDenTay("");
     } catch { /* lỗi đã hiện ở đầu trang */ } finally { setBusy(false); }
   };
   const setFrom = (v) => { if (/^\d{4}-\d{2}-\d{2}$/.test(v)) onSave({ [`cong_no/${d.k}/tu`]: v }).catch(() => {}); };
@@ -264,13 +287,17 @@ function DebtCard({ d, rate, orders, cn, onSave }) {
           <h3 className="text-[16px] font-semibold">{d.n}</h3>
           <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[13px] text-ink-3">Kỳ đang mở từ
             <input type="date" value={from} max={today} onChange={(e) => setFrom(e.target.value)} aria-label={`Ngày bắt đầu kỳ ${d.n}`} className="tnum h-7 rounded-lg border border-line bg-white px-1.5 text-[13px] text-ink-2 focus:border-brand focus:outline-none" />
-            → hôm nay · {d.cur === "usd" ? "tính bằng đô" : "tính bằng tiền Việt"}</p>
+            đến
+            <input type="date" value={den} min={from} max={today} onChange={(e) => setDenTay(e.target.value === today ? "" : e.target.value)} aria-label={`Ngày cuối kỳ ${d.n}`} className={`tnum h-7 rounded-lg border bg-white px-1.5 text-[13px] focus:border-brand focus:outline-none ${den < today ? "border-brand text-ink" : "border-line text-ink-2"}`} />
+            {den < today && <button type="button" onClick={() => setDenTay("")} className="cursor-pointer text-[12.5px] font-medium text-brand-ink hover:underline">về hôm nay</button>}
+            · {d.cur === "usd" ? "tính bằng đô" : "tính bằng tiền Việt"}</p>
+          {sau > 0 && <p className="mt-0.5 text-[12px] text-ink-2">{sau} đơn có giá sau ngày {d2(den).slice(0, 5)} để sang kỳ sau.</p>}
           {!cn.tu && <p className="mt-0.5 text-[12px] text-warn-ink">Chưa đặt ngày bắt đầu kỳ: đang tạm tính 7 ngày gần nhất. Chọn đúng ngày sau lần đối tác trả gần nhất.</p>}
         </div>
         {priced.length ? <Badge tone="warn" dot>Chưa thanh toán</Badge> : <Badge tone="ok" dot>Không nợ</Badge>}
       </div>
       <div className="px-5 pt-3">
-        <div className="text-[12.5px] text-ink-3">Phải thu kỳ này</div>
+        <div className="text-[12.5px] text-ink-3">Phải thu {d2(from).slice(0, 5)} → {d2(den).slice(0, 5)}</div>
         <div className="flex flex-wrap items-baseline gap-x-2"><span className="tnum text-[28px] leading-tight font-bold tracking-[-0.02em] text-gold-ink">{money(d.cur, total)}</span>
           <span className="tnum text-[13px] text-ink-2">{priced.length} đơn{d.cur === "usd" && total > 0 && <> · ≈ {fmt(Math.round(total * rate))}đ</>}</span></div>
         {miss > 0 && <p className="mt-1 text-[12.5px] text-warn-ink">{miss} đơn trong kỳ chưa nhập giá, chưa tính.</p>}

@@ -7,7 +7,13 @@ import { ymd, KT_TEXT, KT_NGAN } from "../store.js";
 import { docSheet, keHoachNhap } from "../nhap.js";
 import { readWeb } from "../firebase.js";
 
-const SRC_TONE = { NGL: "bg-[oklch(0.95_0.03_272)] text-s-ngl", IML: "bg-[oklch(0.95_0.035_192)] text-[oklch(0.45_0.09_192)]", "Khách VN": "bg-gold-soft text-gold-ink", Tay: "bg-off-soft text-ink-2" };
+// màu nhãn nguồn theo màu đối tác (đổi được ở trang Doanh thu -> /web/cfg/mau)
+const SRC_TONE = {
+  NGL: "bg-[color-mix(in_oklch,var(--color-s-ngl)_13%,white)] text-[color-mix(in_oklch,var(--color-s-ngl)_85%,black)]",
+  IML: "bg-[color-mix(in_oklch,var(--color-s-iml)_15%,white)] text-[color-mix(in_oklch,var(--color-s-iml)_62%,black)]",
+  "Khách VN": "bg-[color-mix(in_oklch,var(--color-s-vn)_22%,white)] text-[color-mix(in_oklch,var(--color-s-vn)_48%,black)]",
+  Tay: "bg-off-soft text-ink-2",
+};
 const STATUS = {
   cay: { l: "Đang cày", tone: "run" }, xong: { l: "Đã xong", tone: "ok" }, ban: { l: "Acc bị khóa", tone: "err" },
   dung: { l: "Đã dừng", tone: "warn" }, noi: { l: "Đang nối code", tone: "wait" }, kiem: { l: "Cần kiểm tay", tone: "err" },
@@ -443,8 +449,9 @@ function AddOrder({ onAdd }) {
     if (!n) { setErr("Nhập tên đơn, ví dụ NGL236.150K.04/11 M10"); return; }
     const mt = /^\s*M?(\d+)\s*(?:[·.,\s/-]+\s*(?:tab\s*)?(\d+))?\s*$/i.exec(where);
     if (where.trim() && !mt) { setErr("Máy · tab viết kiểu: M10 · 5 (hoặc để trống)"); return; }
-    const full = pre === "KICK" ? `KICK.${n}` : `${pre}${n}`;
+    const full = pre === "KICK" ? `KICK.${n}` : pre === "khac" ? n : `${pre}${n}`;
     const v = { n: full.slice(0, 100), day: TODAY, t: Math.floor(Date.now() / 1000) };
+    if (pre === "khac") v.loai = "khac";                       // (09/11) đơn tay bất kỳ: nguồn tính theo tên (NGL/IML/Khách VN)
     if (mt) { v.m = "M" + mt[1]; if (mt[2]) v.tab = +mt[2]; }
     if (pre === "KICK") v.note = "Đơn KICK đưa lại";
     setBusy(true);
@@ -458,12 +465,12 @@ function AddOrder({ onAdd }) {
       <Popover.Portal>
         <Popover.Content sideOffset={8} align="end" collisionPadding={12} className="glass pop-in z-50 max-h-[var(--radix-popover-content-available-height)] w-[min(340px,calc(100vw-24px))] overflow-y-auto rounded-2xl border border-white/80 p-4 shadow-[var(--shadow-float)]">
           <div className="text-[14px] font-semibold">Thêm đơn tay</div>
-          <p className="mt-0.5 text-[12.5px] text-ink-2">Ngày thuê = hôm nay. Lưu lên web, mọi máy/điện thoại của bạn đều thấy.</p>
-          <div className="mt-3"><Segmented label="Loại đơn" value={pre} onChange={setPre} items={[{ k: "GL.", l: "GL." }, { k: "KICK", l: "KICK" }]} className="w-fit" /></div>
+          <p className="mt-0.5 text-[12.5px] text-ink-2">Ngày thuê = hôm nay. GL. / KICK = đơn đưa lại acc. Khác = đơn bất kỳ, gõ tên đầy đủ (khách VN, NGL/IML nhận qua Messenger…): nguồn tự nhận theo tên.</p>
+          <div className="mt-3"><Segmented label="Loại đơn" value={pre} onChange={setPre} items={[{ k: "GL.", l: "GL." }, { k: "KICK", l: "KICK" }, { k: "khac", l: "Khác" }]} className="w-fit" /></div>
           <label className="mt-3 block text-[12.5px] font-medium text-ink-2">Tên đơn
             <div className="mt-1 flex h-9 items-center rounded-xl border border-line bg-white pl-3 focus-within:border-brand focus-within:ring-3 focus-within:ring-brand/15">
-              <span className="text-[13.5px] font-semibold text-ink-3">{pre === "KICK" ? "KICK." : pre}</span>
-              <input autoFocus value={name} onChange={(e) => { setName(e.target.value); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && submit()} placeholder="NGL236.150K.04/11 M10" className="h-full min-w-0 flex-1 bg-transparent px-1 text-[13.5px] text-ink focus:outline-none" />
+              {pre !== "khac" && <span className="text-[13.5px] font-semibold text-ink-3">{pre === "KICK" ? "KICK." : pre}</span>}
+              <input autoFocus value={name} onChange={(e) => { setName(e.target.value); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && submit()} placeholder={pre === "khac" ? "hoang.70K.09/11(1234) M10" : "NGL236.150K.04/11 M10"} className="h-full min-w-0 flex-1 bg-transparent px-1 text-[13.5px] text-ink focus:outline-none" />
             </div>
           </label>
           <label className="mt-3 block text-[12.5px] font-medium text-ink-2">Máy · tab <span className="font-normal text-ink-3">(không bắt buộc)</span>

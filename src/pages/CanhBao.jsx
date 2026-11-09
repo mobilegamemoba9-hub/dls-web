@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { ArrowRight, Server, Radio } from "lucide-react";
-import { Card, Segmented, Badge, SampleTag, cn } from "../ui.jsx";
+import { ArrowRight, Server, Radio, Check, CheckCheck } from "lucide-react";
+import { Card, Segmented, Badge, SampleTag, Button, cn } from "../ui.jsx";
 import { alerts as mau } from "../data.js";
-import { tdAlerts } from "../store.js";
+import { tdAlerts, daDoc, docPatch, docKey as docKeyOf } from "../store.js";
 
 const SEV = { err: { l: "Lỗi", tone: "err" }, warn: { l: "Cần xem", tone: "warn" }, info: { l: "Thông tin", tone: "info" } };
 const pad = (n) => String(n).padStart(2, "0");
@@ -13,14 +13,19 @@ function ngay(ts) {
 }
 const gio = (ts) => { const d = new Date(ts); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 
-export default function CanhBao({ live, data, issues }) {
+export default function CanhBao({ live, data, issues, onSave }) {
   const [f, setF] = useState("all");
+  const [busy, setBusy] = useState(false);
   const real = !!live;
   // ĐANG CÓ: việc đang hỏng lúc này (máy + máy nhà). LỊCH SỬ: tin #canh-bao Tổng đài 3 ngày gần nhất.
   const now = (issues || []).map((a) => ({ ...a, day: "Đang có", time: a.time || "bây giờ" }));
   const hist = real ? tdAlerts(data).map((a) => ({ ...a, day: ngay(a.ts), time: gio(a.ts) })) : [];
-  const all = real ? [...now, ...hist] : mau;
-  const list = all.filter((a) => f === "all" || a.src === f);
+  const all = (real ? [...now, ...hist] : mau).map((a) => ({ ...a, doc: real && daDoc(data, a) }));
+  const list = all.filter((a) => f === "all" || (f === "moi" ? !a.doc : a.src === f));
+  const chuaDoc = all.filter((a) => !a.doc);
+  // (09/11) đánh dấu đã đọc: lưu /web/cfg/doc (điện thoại + máy tính cùng thấy); nội dung cảnh báo đổi thì tự hiện lại là chưa đọc
+  const docXong = async (ds) => { if (!ds.length || !onSave || busy) return; setBusy(true); try { await onSave(docPatch(data, ds)); } catch { /* lỗi hiện ở đầu trang */ } finally { setBusy(false); } };
+  const boDoc = (a) => onSave && onSave({ [`cfg/doc/${docKeyOf(a)}`]: null }).catch(() => {});
   const days = [...new Set(list.map((a) => a.day))];
   return (
     <div className="mx-auto max-w-[820px] space-y-5">
@@ -30,9 +35,10 @@ export default function CanhBao({ live, data, issues }) {
           <p className="mt-1 text-[13.5px] text-ink-2">{real ? "“Đang có” = đang hỏng lúc này. Bên dưới là tin #canh-bao của Tổng đài 3 ngày gần nhất, mới nhất ở trên." : "Gom từ mọi máy và Tổng đài, mới nhất ở trên."}</p>
         </div>
         {!real && <SampleTag />}
+        {real && chuaDoc.length > 0 && <Button variant="outline" size="sm" onClick={() => docXong(chuaDoc)} disabled={busy}><CheckCheck />Đánh dấu tất cả đã đọc ({chuaDoc.length})</Button>}
       </div>
-      <Segmented label="Nguồn cảnh báo" value={f} onChange={setF} className="w-fit"
-        items={[{ k: "all", l: "Tất cả", c: all.length }, { k: "Máy", l: "Máy", c: all.filter((a) => a.src === "Máy").length }, { k: "Tổng đài", l: "Tổng đài", c: all.filter((a) => a.src === "Tổng đài").length }]} />
+      <Segmented label="Nguồn cảnh báo" value={f} onChange={setF} className="w-fit max-w-full overflow-x-auto"
+        items={[{ k: "all", l: "Tất cả", c: all.length }, ...(real ? [{ k: "moi", l: "Chưa đọc", c: chuaDoc.length }] : []), { k: "Máy", l: "Máy", c: all.filter((a) => a.src === "Máy").length }, { k: "Tổng đài", l: "Tổng đài", c: all.filter((a) => a.src === "Tổng đài").length }]} />
       {real && !(data && data.nha) && <p className="rounded-xl bg-warn-soft px-4 py-2.5 text-[13.5px] text-warn-ink">Máy nhà chưa gửi dữ liệu (chưa cài gói WEB TỔNG ĐÀI) — chưa có cảnh báo Tổng đài.</p>}
       {days.map((d) => (
         <section key={d} aria-label={d}>
@@ -42,7 +48,7 @@ export default function CanhBao({ live, data, issues }) {
               {list.filter((a) => a.day === d).map((a) => {
                 const I = a.src === "Máy" ? Server : Radio;
                 return (
-                  <li key={a.id} className={cn("flex gap-3.5 px-5 py-4", a.sev === "err" && "bg-err-soft/50")}>
+                  <li key={a.id} className={cn("flex gap-3.5 px-5 py-4", a.sev === "err" && !a.doc && "bg-err-soft/50", a.doc && "opacity-55")}>
                     <span className={cn("mt-0.5 grid size-9 shrink-0 place-items-center rounded-xl", a.sev === "err" ? "bg-err text-white" : a.sev === "warn" ? "bg-warn-soft text-warn-ink" : "bg-run-soft text-run-ink")}><I className="size-[18px]" strokeWidth={1.9} /></span>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
@@ -51,6 +57,12 @@ export default function CanhBao({ live, data, issues }) {
                         <span className="tnum ml-auto text-[12.5px] text-ink-3">{a.src} · {a.time}</span>
                       </div>
                       {a.p && <p className="mt-1 text-[14px] break-words whitespace-pre-line text-ink-2">{a.p}</p>}
+                      {real && (
+                        <button type="button" onClick={() => (a.doc ? boDoc(a) : docXong([a]))} disabled={busy}
+                          className={cn("mt-2 mr-3 inline-flex h-7 cursor-pointer items-center gap-1 rounded-lg border px-2 text-[12.5px] font-medium", a.doc ? "border-line bg-white text-ink-3 hover:text-ink" : "border-line bg-white text-ink-2 hover:bg-wash")}>
+                          <Check className="size-3.5" />{a.doc ? "Đã đọc · bỏ đánh dấu" : "Đánh dấu đã đọc"}
+                        </button>
+                      )}
                       {a.go && <a href={`#may/${a.go}`} className="mt-2 inline-flex items-center gap-1 text-[13px] font-medium text-brand-ink hover:underline underline-offset-4">Xem máy {a.go}<ArrowRight className="size-3.5" /></a>}
                     </div>
                   </li>

@@ -154,10 +154,14 @@ export function soonOf(live) {
 }
 
 // tab đang cày có vàng từ 7h < 50% trung vị các tab đang cày cùng máy (cần >= 3 tab và trung vị >= 2.000)
-export function slowOf(live) {
+// (09/11) KHÔNG tính: gói bắt đầu sau mốc 7h gần nhất (đơn mới gửi hôm nay) và đơn chưa full sân (tên "60-7K": bot đang nâng sân)
+const CHUA_FULL_SAN = /\d\s*-\s*\d+(?:[.,]\d+)?\s*K/i;
+function moc7h(nowMs) { const d = new Date(nowMs); d.setHours(7, 0, 0, 0); if (d.getTime() > nowMs) d.setDate(d.getDate() - 1); return d.getTime(); }
+export function slowOf(live, nowMs = Date.now()) {
   const out = [];
+  const moc = moc7h(nowMs);
   for (const m of live.real) {
-    const ts = m.tabs.filter((t) => t.k === "cay" || t.k === "cho");
+    const ts = m.tabs.filter((t) => (t.k === "cay" || t.k === "cho") && !CHUA_FULL_SAN.test(t.name || "") && !((bdMs(t.bd) ?? 0) >= moc));
     if (ts.length < 3) continue;
     const v = ts.map((t) => t.today).sort((a, b) => a - b);
     const med = v[Math.floor(v.length / 2)];

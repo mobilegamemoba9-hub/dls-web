@@ -190,7 +190,7 @@ export function buildOrders(data, live) {
   for (const [id, x] of Object.entries((data && data.web && data.web.don_tay) || {})) {
     if (!x || typeof x !== "object" || !x.day) continue;
     seen.add(normName(x.n));
-    finish({ id, from: "tay", auto: !!x.auto, name: x.n || "", src: x.auto ? srcFromName(x.n) : "Tay", m: x.m || mayFromName(x.n), tab: x.tab ?? "—", day: x.day, start: dmy(x.day), g: 0, tg: 0, st: "cay", note: x.note || "", t: x.t });
+    finish({ id, from: "tay", auto: !!x.auto, name: x.n || "", src: x.auto || x.loai === "khac" ? srcFromName(x.n) : "Tay", m: x.m || mayFromName(x.n), tab: x.tab ?? "—", day: x.day, start: dmy(x.day), g: 0, tg: 0, st: "cay", note: x.note || "", t: x.t });
   }
   // 3) đơn cũ nhập 1 lần từ Sheet (bỏ đơn đã có ở 1/2 cùng tên)
   for (const [id, x] of Object.entries((data && data.web && data.web.don_cu) || {})) {
@@ -286,6 +286,22 @@ export function homeIssues(data, nowMs = Date.now()) {
 }
 
 // cảnh báo #canh-bao -> danh sách (mới nhất trên)
+// (09/11) cảnh báo đã đọc: /web/cfg/doc/<khóa> = giờ đọc (giây). Khóa theo id + nội dung -> nội dung đổi thì hiện lại là chưa đọc.
+export function docKey(a) {
+  let h = 0x811c9dc5;
+  for (const ch of `${a.id}|${a.t || ""}|${a.p || ""}`) { h ^= ch.codePointAt(0); h = Math.imul(h, 0x01000193) >>> 0; }
+  return "d" + h.toString(36);
+}
+export const daDoc = (data, a) => !!(data && data.web && data.web.cfg && data.web.cfg.doc && data.web.cfg.doc[docKey(a)]);
+// patch đánh dấu đã đọc + xóa khóa cũ hơn 7 ngày
+export function docPatch(data, list) {
+  const now = Math.floor(Date.now() / 1000);
+  const p = {};
+  for (const a of list) p[`cfg/doc/${docKey(a)}`] = now;
+  const cu = (data && data.web && data.web.cfg && data.web.cfg.doc) || {};
+  for (const [k, t] of Object.entries(cu)) if (!(`cfg/doc/${k}` in p) && now - (+t || 0) > 7 * 86400) p[`cfg/doc/${k}`] = null;
+  return p;
+}
 export function tdAlerts(data) {
   return Object.entries((data && data.cb) || {}).map(([id, a]) => {
     const x = String(a.x || "");
