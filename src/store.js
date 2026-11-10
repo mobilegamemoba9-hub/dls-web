@@ -210,7 +210,9 @@ export function buildOrders(data, live) {
   }
   return out.sort((a, b) => (a.day === b.day ? cmpTrongNgay(a, b) : a.day < b.day ? -1 : 1));
 }
-const TU_THEM = /^(?:GL\.|KICK\.?)?(?:NGL|IML)\d+/i;
+// (11/11) + gói khách VN tạo tay trên Xeon: <tên khách hoặc mã VNxxxx>.<gói>.<dd/mm>(<hhmm>) M<máy>, vd "minhhoang.70K.10/11(2301) M10", "VN2072.9NGAY.10/11(2301) M10".
+//   Trước đây chỉ NGL/IML được tự thêm nên đơn khách VN thêm tay trên máy không hiện. Tab NEW<số> không bao giờ khớp (không có ".gói.ngày(giờ)").
+const TU_THEM = /^(?:(?:GL\.|KICK\.?)?(?:NGL|IML)\d+|[a-z0-9_-]+\.(?:\d+(?:[+-]\d+)?k|\d+ngay)\.\d{1,2}\/\d{1,2}\(\d{3,4}\))/i;
 // id cố định theo tên gói (FNV-1a) -> sửa giá/ghi chú trước và sau khi lưu vào don_tay vẫn cùng 1 id
 export function idMay(name) {
   let h = 0x811c9dc5;
